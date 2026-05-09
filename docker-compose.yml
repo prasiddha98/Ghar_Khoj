@@ -1,0 +1,64 @@
+version: "3.8"
+services:
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.api
+    ports:
+      - "3000:3000"
+    volumes:
+      - local-storage:/repo/local-storage
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/ghar_khoj
+      - JWT_SECRET=supersecretlocal
+      - PRIVATE_OBJECT_DIR=ghar-khoj-private
+      - PUBLIC_OBJECT_SEARCH_PATHS=ghar-khoj-public
+      - USE_LOCAL_STORAGE=true
+    restart: unless-stopped
+    depends_on:
+      - db
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.web
+    ports:
+      - "5173:5173"
+    environment:
+      - PORT=5173
+      - BASE_PATH=/ 
+      - API_PROXY_TARGET=http://api:3000
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ghar_khoj
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:7
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    restart: unless-stopped
+    depends_on:
+      - db
+
+volumes:
+  db-data:
+  pgadmin-data:
+  local-storage:

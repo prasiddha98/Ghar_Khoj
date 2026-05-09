@@ -1,0 +1,1456 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Ghar Khoj - Broker-Free Room Rental Platform API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: rooms
+    description: Room listing operations
+  - name: users
+    description: User profile operations
+  - name: recommendations
+    description: AI recommendation operations
+  - name: interactions
+    description: User interactions (save, view, rent)
+  - name: messages
+    description: Chat messaging
+  - name: verification
+    description: User verification
+  - name: storage
+    description: Object storage uploads
+  - name: matches
+    description: Tenant-owner matching
+  - name: contracts
+    description: Rental contracts
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /rooms:
+    get:
+      operationId: getRooms
+      tags: [rooms]
+      summary: Get all rooms with optional filters
+      parameters:
+        - name: city
+          in: query
+          schema:
+            type: string
+        - name: minPrice
+          in: query
+          schema:
+            type: number
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+        - name: roomType
+          in: query
+          schema:
+            type: string
+        - name: tenantType
+          in: query
+          schema:
+            type: string
+        - name: parking
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of rooms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomListResponse"
+    post:
+      operationId: createRoom
+      tags: [rooms]
+      summary: Create a new room listing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRoomInput"
+      responses:
+        "201":
+          description: Room created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+
+  /rooms/owner/{ownerId}:
+    get:
+      operationId: getRoomsByOwner
+      tags: [rooms]
+      summary: Get rooms belonging to a specific owner
+      parameters:
+        - name: ownerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Owner's rooms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomListResponse"
+
+  /rooms/{id}:
+    get:
+      operationId: getRoom
+      tags: [rooms]
+      summary: Get a single room by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Room details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+        "404":
+          description: Room not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateRoom
+      tags: [rooms]
+      summary: Update a room listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRoomInput"
+      responses:
+        "200":
+          description: Updated room
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Room"
+    delete:
+      operationId: deleteRoom
+      tags: [rooms]
+      summary: Delete a room listing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Room deleted
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get user profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update user profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserInput"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users:
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create / register a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserInput"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /recommendations:
+    post:
+      operationId: getRecommendations
+      tags: [recommendations]
+      summary: Get AI-powered room recommendations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecommendationInput"
+      responses:
+        "200":
+          description: Ranked list of recommended rooms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecommendationResponse"
+
+  /interactions:
+    post:
+      operationId: createInteraction
+      tags: [interactions]
+      summary: Record user interaction (view, save, rent)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInteractionInput"
+      responses:
+        "201":
+          description: Interaction recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Interaction"
+
+  /interactions/user/{userId}:
+    get:
+      operationId: getUserInteractions
+      tags: [interactions]
+      summary: Get user interactions
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [view, save, rent]
+      responses:
+        "200":
+          description: User interactions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InteractionListResponse"
+
+  /messages:
+    post:
+      operationId: sendMessage
+      tags: [messages]
+      summary: Send a chat message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendMessageInput"
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /messages/{userId}/{otherUserId}:
+    get:
+      operationId: getMessages
+      tags: [messages]
+      summary: Get conversation between two users
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: otherUserId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageListResponse"
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [verification]
+      summary: Get admin dashboard statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /admin/verifications:
+    get:
+      operationId: getAdminVerifications
+      tags: [verification]
+      summary: Get all verification documents (admin)
+      responses:
+        "200":
+          description: All verification docs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationListResponse"
+
+  /admin/users:
+    get:
+      operationId: getAdminUsers
+      tags: [users]
+      summary: Get all users (admin)
+      responses:
+        "200":
+          description: All users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListResponse"
+
+  /admin/rooms:
+    get:
+      operationId: getAdminRooms
+      tags: [rooms]
+      summary: Get all rooms (admin)
+      responses:
+        "200":
+          description: All rooms
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomListResponse"
+
+  /verification:
+    post:
+      operationId: submitVerification
+      tags: [verification]
+      summary: Submit user verification documents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitVerificationInput"
+      responses:
+        "201":
+          description: Verification submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationDoc"
+
+  /verification/{userId}/approve:
+    post:
+      operationId: approveVerification
+      tags: [verification]
+      summary: Admin approve user verification
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Verification approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationDoc"
+
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      summary: Request a presigned upload URL
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestUploadUrlBody"
+      responses:
+        "200":
+          description: Presigned upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestUploadUrlResponse"
+
+  /tenant-preferences/{userId}:
+    get:
+      operationId: getTenantPreferences
+      tags: [matches]
+      summary: Get tenant preferences
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Tenant preferences
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantPreference"
+    put:
+      operationId: upsertTenantPreferences
+      tags: [matches]
+      summary: Create or update tenant preferences
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertTenantPreferenceInput"
+      responses:
+        "200":
+          description: Preferences saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantPreference"
+
+  /matches:
+    post:
+      operationId: createMatch
+      tags: [matches]
+      summary: Create a match (tenant shows interest in a room)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMatchInput"
+      responses:
+        "201":
+          description: Match created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Match"
+
+  /matches/tenant/{tenantId}:
+    get:
+      operationId: getTenantMatches
+      tags: [matches]
+      summary: Get all matches for a tenant
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Tenant matches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchListResponse"
+
+  /matches/owner/{ownerId}:
+    get:
+      operationId: getOwnerMatches
+      tags: [matches]
+      summary: Get all matches for an owner
+      parameters:
+        - name: ownerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Owner matches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchListResponse"
+
+  /matches/{id}/respond:
+    patch:
+      operationId: respondToMatch
+      tags: [matches]
+      summary: Owner or tenant responds to a match
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RespondMatchInput"
+      responses:
+        "200":
+          description: Match updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Match"
+
+  /contracts:
+    post:
+      operationId: createContract
+      tags: [contracts]
+      summary: Create a rental contract
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContractInput"
+      responses:
+        "201":
+          description: Contract created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contract"
+
+  /contracts/match/{matchId}:
+    get:
+      operationId: getContractByMatch
+      tags: [contracts]
+      summary: Get contract for a match
+      parameters:
+        - name: matchId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Contract
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contract"
+
+  /contracts/user/{userId}:
+    get:
+      operationId: getUserContracts
+      tags: [contracts]
+      summary: Get all contracts for a user
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User contracts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractListResponse"
+
+  /contracts/{id}/sign:
+    patch:
+      operationId: signContract
+      tags: [contracts]
+      summary: Sign a contract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignContractInput"
+      responses:
+        "200":
+          description: Contract signed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contract"
+
+  /contracts/{id}/verify:
+    patch:
+      operationId: verifyContract
+      tags: [contracts]
+      summary: Admin verify a contract
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyContractInput"
+      responses:
+        "200":
+          description: Contract verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contract"
+
+  /admin/contracts:
+    get:
+      operationId: getAdminContracts
+      tags: [contracts]
+      summary: Get all contracts (admin)
+      responses:
+        "200":
+          description: All contracts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContractListResponse"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required: [error, message]
+
+    Room:
+      type: object
+      properties:
+        id:
+          type: integer
+        ownerId:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        roomType:
+          type: string
+          enum: [single, double, flat, studio, shared]
+        tenantType:
+          type: string
+          enum: [any, family, student, male, female, professional]
+        city:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        parking:
+          type: boolean
+        amenities:
+          type: array
+          items:
+            type: string
+        photos:
+          type: array
+          items:
+            type: string
+        isVerified:
+          type: boolean
+        isAvailable:
+          type: boolean
+        nearbyLandmarks:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - ownerId
+        - title
+        - price
+        - roomType
+        - tenantType
+        - city
+        - address
+        - latitude
+        - longitude
+        - parking
+        - amenities
+        - photos
+        - isVerified
+        - isAvailable
+        - createdAt
+
+    CreateRoomInput:
+      type: object
+      properties:
+        ownerId:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        roomType:
+          type: string
+          enum: [single, double, flat, studio, shared]
+        tenantType:
+          type: string
+          enum: [any, family, student, male, female, professional]
+        city:
+          type: string
+        address:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        parking:
+          type: boolean
+        amenities:
+          type: array
+          items:
+            type: string
+        photos:
+          type: array
+          items:
+            type: string
+        nearbyLandmarks:
+          type: array
+          items:
+            type: string
+      required:
+        - ownerId
+        - title
+        - price
+        - roomType
+        - tenantType
+        - city
+        - address
+        - latitude
+        - longitude
+        - parking
+
+    RoomListResponse:
+      type: object
+      properties:
+        rooms:
+          type: array
+          items:
+            $ref: "#/components/schemas/Room"
+        total:
+          type: integer
+      required: [rooms, total]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [tenant, owner, admin]
+        isVerified:
+          type: boolean
+        verificationStatus:
+          type: string
+          enum: [pending, approved, rejected, none]
+        profilePhoto:
+          type: string
+        bio:
+          type: string
+        preferredCity:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - firstName
+        - email
+        - role
+        - isVerified
+        - verificationStatus
+        - createdAt
+
+    CreateUserInput:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [tenant, owner, admin]
+        preferredCity:
+          type: string
+      required: [firstName, email, role]
+
+    UpdateUserInput:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+        bio:
+          type: string
+        preferredCity:
+          type: string
+        profilePhoto:
+          type: string
+
+    RecommendationInput:
+      type: object
+      properties:
+        userId:
+          type: integer
+        latitude:
+          type: number
+        longitude:
+          type: number
+        filters:
+          $ref: "#/components/schemas/RoomFilters"
+        limit:
+          type: integer
+          default: 10
+      required: [userId, latitude, longitude]
+
+    RoomFilters:
+      type: object
+      properties:
+        minPrice:
+          type: number
+        maxPrice:
+          type: number
+        roomType:
+          type: string
+        tenantType:
+          type: string
+        parking:
+          type: boolean
+        city:
+          type: string
+
+    RecommendationResult:
+      type: object
+      properties:
+        roomId:
+          type: integer
+        room:
+          $ref: "#/components/schemas/Room"
+        distanceKm:
+          type: number
+        contentScore:
+          type: number
+        knnScore:
+          type: number
+        collabScore:
+          type: number
+        finalScore:
+          type: number
+        tag:
+          type: string
+        reason:
+          type: string
+      required:
+        - roomId
+        - room
+        - distanceKm
+        - contentScore
+        - knnScore
+        - collabScore
+        - finalScore
+        - tag
+
+    RecommendationResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecommendationResult"
+        total:
+          type: integer
+      required: [results, total]
+
+    Interaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        roomId:
+          type: integer
+        type:
+          type: string
+          enum: [view, save, rent]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, userId, roomId, type, createdAt]
+
+    CreateInteractionInput:
+      type: object
+      properties:
+        userId:
+          type: integer
+        roomId:
+          type: integer
+        type:
+          type: string
+          enum: [view, save, rent]
+      required: [userId, roomId, type]
+
+    InteractionListResponse:
+      type: object
+      properties:
+        interactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Interaction"
+      required: [interactions]
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        senderId:
+          type: integer
+        receiverId:
+          type: integer
+        roomId:
+          type: integer
+        content:
+          type: string
+        mediaUrl:
+          type: string
+        mediaType:
+          type: string
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, senderId, receiverId, content, isRead, createdAt]
+
+    SendMessageInput:
+      type: object
+      properties:
+        senderId:
+          type: integer
+        receiverId:
+          type: integer
+        roomId:
+          type: integer
+        content:
+          type: string
+        mediaUrl:
+          type: string
+        mediaType:
+          type: string
+      required: [senderId, receiverId]
+
+    MessageListResponse:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+      required: [messages]
+
+    VerificationDoc:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        docType:
+          type: string
+          enum: [citizenship, nid, passport, license]
+        docUrl:
+          type: string
+        selfieUrl:
+          type: string
+        citizenshipNumber:
+          type: string
+        fullNameCitizenship:
+          type: string
+        dateOfBirth:
+          type: string
+        issueDate:
+          type: string
+        docPhotoUrl:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        adminNote:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, userId, docType, status, createdAt]
+
+    UpdateRoomInput:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        roomType:
+          type: string
+        tenantType:
+          type: string
+        parking:
+          type: boolean
+        amenities:
+          type: array
+          items:
+            type: string
+        photos:
+          type: array
+          items:
+            type: string
+        isAvailable:
+          type: boolean
+        nearbyLandmarks:
+          type: array
+          items:
+            type: string
+
+    AdminStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        totalRooms:
+          type: integer
+        pendingVerifications:
+          type: integer
+        totalMessages:
+          type: integer
+        verifiedUsers:
+          type: integer
+        availableRooms:
+          type: integer
+        unverifiedRooms:
+          type: integer
+      required: [totalUsers, totalRooms, pendingVerifications, totalMessages, verifiedUsers, availableRooms]
+
+    VerificationListResponse:
+      type: object
+      properties:
+        verifications:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerificationDoc"
+      required: [verifications]
+
+    UserListResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        total:
+          type: integer
+      required: [users, total]
+
+    SubmitVerificationInput:
+      type: object
+      properties:
+        userId:
+          type: integer
+        docType:
+          type: string
+          enum: [citizenship, nid, passport, license]
+        docUrl:
+          type: string
+        selfieUrl:
+          type: string
+        citizenshipNumber:
+          type: string
+        fullNameCitizenship:
+          type: string
+        dateOfBirth:
+          type: string
+        issueDate:
+          type: string
+        docPhotoUrl:
+          type: string
+      required: [userId, docType]
+
+    RequestUploadUrlBody:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        contentType:
+          type: string
+      required: [name, contentType]
+
+    RequestUploadUrlResponse:
+      type: object
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+        metadata:
+          type: object
+          properties:
+            name:
+              type: string
+            size:
+              type: integer
+            contentType:
+              type: string
+      required: [uploadURL, objectPath]
+
+    TenantPreference:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        roomType:
+          type: string
+        tenantType:
+          type: string
+        city:
+          type: string
+        minBudget:
+          type: number
+        maxBudget:
+          type: number
+        parking:
+          type: boolean
+        amenities:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, userId, createdAt, updatedAt]
+
+    UpsertTenantPreferenceInput:
+      type: object
+      properties:
+        roomType:
+          type: string
+        tenantType:
+          type: string
+        city:
+          type: string
+        minBudget:
+          type: number
+        maxBudget:
+          type: number
+        parking:
+          type: boolean
+        amenities:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+
+    Match:
+      type: object
+      properties:
+        id:
+          type: integer
+        tenantId:
+          type: integer
+        ownerId:
+          type: integer
+        roomId:
+          type: integer
+        status:
+          type: string
+          enum: [pending, accepted, rejected, cancelled]
+        tenantStatus:
+          type: string
+          enum: [pending, accepted, rejected]
+        ownerStatus:
+          type: string
+          enum: [pending, accepted, rejected]
+        matchScore:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, ownerId, roomId, status, tenantStatus, ownerStatus, createdAt, updatedAt]
+
+    CreateMatchInput:
+      type: object
+      properties:
+        tenantId:
+          type: integer
+        ownerId:
+          type: integer
+        roomId:
+          type: integer
+        matchScore:
+          type: integer
+      required: [tenantId, ownerId, roomId]
+
+    RespondMatchInput:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [tenant, owner]
+        decision:
+          type: string
+          enum: [accepted, rejected]
+      required: [role, decision]
+
+    MatchListResponse:
+      type: object
+      properties:
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/Match"
+      required: [matches]
+
+    Contract:
+      type: object
+      properties:
+        id:
+          type: integer
+        matchId:
+          type: integer
+        tenantId:
+          type: integer
+        ownerId:
+          type: integer
+        roomId:
+          type: integer
+        rentAmount:
+          type: integer
+        startDate:
+          type: string
+        endDate:
+          type: string
+        terms:
+          type: string
+        ownerSignature:
+          type: string
+        tenantSignature:
+          type: string
+        ownerSignedAt:
+          type: string
+          format: date-time
+        tenantSignedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [draft, owner_signed, tenant_signed, fully_signed, verified, cancelled]
+        adminVerifiedAt:
+          type: string
+          format: date-time
+        adminNote:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, matchId, tenantId, ownerId, roomId, rentAmount, startDate, endDate, status, createdAt]
+
+    CreateContractInput:
+      type: object
+      properties:
+        matchId:
+          type: integer
+        tenantId:
+          type: integer
+        ownerId:
+          type: integer
+        roomId:
+          type: integer
+        rentAmount:
+          type: integer
+        startDate:
+          type: string
+        endDate:
+          type: string
+        terms:
+          type: string
+      required: [matchId, tenantId, ownerId, roomId, rentAmount, startDate, endDate]
+
+    SignContractInput:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [tenant, owner]
+        signature:
+          type: string
+      required: [role, signature]
+
+    VerifyContractInput:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: [verified, cancelled]
+        adminNote:
+          type: string
+      required: [decision]
+
+    ContractListResponse:
+      type: object
+      properties:
+        contracts:
+          type: array
+          items:
+            $ref: "#/components/schemas/Contract"
+      required: [contracts]

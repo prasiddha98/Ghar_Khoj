@@ -1,0 +1,386 @@
+import { useState, useEffect } from "react";
+import { useAuth, isRealUserLoggedIn } from "@/hooks/use-auth";
+import { useLocation, useRoute } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
+import { motion } from "framer-motion";
+import {
+  FileText, CheckCircle2, Clock, XCircle, PenLine,
+  Lock, ShieldCheck, Home, ArrowLeft, Loader2, AlertCircle
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Link } from "wouter";
+import { format } from "date-fns";
+import { BackButton } from "@/components/back-button";
+
+interface Contract {
+  id: number; matchId: number; tenantId: number; ownerId: number; roomId: number;
+  rentAmount: number; startDate: string; endDate: string; terms?: string;
+  ownerSignature?: string; tenantSignature?: string;
+  ownerSignedAt?: string; tenantSignedAt?: string;
+  status: string; adminVerifiedAt?: string; adminNote?: string; createdAt: string;
+  tenant?: { id: number; firstName: string; lastName?: string };
+  owner?: { id: number; firstName: string; lastName?: string };
+  room?: { id: number; title: string; city: string; address: string };
+}
+
+const STATUS_MAP: Record<string, { label: string; color: string; icon: any }> = {
+  draft: { label: "Draft", color: "bg-muted text-muted-foreground", icon: FileText },
+  owner_signed: { label: "Owner Signed", color: "bg-blue-100 text-blue-700", icon: PenLine },
+  tenant_signed: { label: "Tenant Signed", color: "bg-blue-100 text-blue-700", icon: PenLine },
+  fully_signed: { label: "Fully Signed", color: "bg-amber-100 text-amber-700", icon: CheckCircle2 },
+  verified: { label: "Verified", color: "bg-green-100 text-green-700", icon: ShieldCheck },
+  cancelled: { label: "Cancelled", color: "bg-red-100 text-red-700", icon: XCircle },
+};
+
+function ContractCard({ contract, userId, onSign, onViewDetail }: {
+  contract: Contract; userId: number;
+  onSign: (id: number, role: string) => void;
+  onViewDetail: (id: number) => void;
+}) {
+  const isOwner = contract.ownerId === userId;
+  const isTenant = contract.tenantId === userId;
+  const status = STATUS_MAP[contract.status] || STATUS_MAP.draft;
+  const StatusIcon = status.icon;
+
+  const canSign = (isOwner && !contract.ownerSignature) || (isTenant && !contract.tenantSignature);
+  const needsMySignature = (isOwner && !contract.ownerSignature) || (isTenant && !contract.tenantSignature);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white rounded-2xl border shadow-sm p-5 hover:shadow-md transition-shadow"
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="font-bold text-base line-clamp-1">{contract.room?.title || `Room #${contract.roomId}`}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{contract.room?.city} · {contract.room?.address}</p>
+        </div>
+        <Badge className={cn("text-xs font-medium", status.color)}>
+          <StatusIcon size={11} className="mr-1" /> {status.label}
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
+        <div className="bg-muted/30 rounded-xl p-3">
+          <p className="text-xs text-muted-foreground">Monthly Rent</p>
+          <p className="font-bold text-foreground">NPR {contract.rentAmount.toLocaleString()}</p>
+        </div>
+        <div className="bg-muted/30 rounded-xl p-3">
+          <p className="text-xs text-muted-foreground">Period</p>
+          <p className="font-bold text-foreground text-xs">{contract.startDate} → {contract.endDate}</p>
+        </div>
+      </div>
+
+      <div className="flex gap-2 text-xs mb-3">
+        <div className={cn("flex items-center gap-1 px-2 py-1 rounded-full", contract.ownerSignature ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground")}>
+          <CheckCircle2 size={10} /> Owner {contract.ownerSignature ? "signed" : "pending"}
+        </div>
+        <div className={cn("flex items-center gap-1 px-2 py-1 rounded-full", contract.tenantSignature ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground")}>
+          <CheckCircle2 size={10} /> Tenant {contract.tenantSignature ? "signed" : "pending"}
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" className="flex-1 rounded-xl text-xs h-9" onClick={() => onViewDetail(contract.id)}>
+          View Contract
+        </Button>
+        {needsMySignature && (
+          <Button size="sm" className="flex-1 rounded-xl text-xs h-9 gap-1" onClick={() => onSign(contract.id, isOwner ? "owner" : "tenant")}>
+            <PenLine size={12} /> Sign Now
+          </Button>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function SignModal({ contractId, role, onClose, onSigned }: {
+  contractId: number; role: string;
+  onClose: () => void; onSigned: () => void;
+}) {
+  const [sig, setSig] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const handleSign = async () => {
+    if (!sig.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/sign`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, signature: sig.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      toast({ title: "Contract signed successfully!" });
+      onSigned();
+    } catch {
+      toast({ title: "Signing failed", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl"
+      >
+        <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><PenLine size={18} /> Sign Contract</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Type your full legal name as it appears on your ID document to digitally sign this contract.
+        </p>
+        <Input
+          value={sig}
+          onChange={e => setSig(e.target.value)}
+          placeholder="Your full legal name"
+          className="rounded-xl mb-4"
+        />
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 mb-4">
+          By typing your name and clicking Sign, you agree to be legally bound by this rental contract.
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" className="flex-1 rounded-xl" onClick={onClose}>Cancel</Button>
+          <Button className="flex-1 rounded-xl" disabled={!sig.trim() || loading} onClick={handleSign}>
+            {loading ? <Loader2 size={15} className="animate-spin mr-1" /> : <PenLine size={15} className="mr-1" />}
+            Sign Contract
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function ContractDetail({ id, userId, onBack, onRefresh }: {
+  id: number; userId: number; onBack: () => void; onRefresh: () => void;
+}) {
+  const [contract, setContract] = useState<Contract | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [signing, setSigning] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetch(`/api/contracts/user/${userId}`)
+      .then(r => r.json())
+      .then(d => {
+        const found = (d.contracts || []).find((c: Contract) => c.id === id);
+        setContract(found || null);
+      })
+      .finally(() => setLoading(false));
+  }, [id, userId]);
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" size={32} /></div>;
+  if (!contract) return <div className="text-center py-12 text-muted-foreground">Contract not found</div>;
+
+  const isOwner = contract.ownerId === userId;
+  const isTenant = contract.tenantId === userId;
+  const status = STATUS_MAP[contract.status] || STATUS_MAP.draft;
+  const StatusIcon = status.icon;
+
+  const ownerName = contract.owner ? `${contract.owner.firstName} ${contract.owner.lastName || ""}`.trim() : "Unknown";
+  const tenantName = contract.tenant ? `${contract.tenant.firstName} ${contract.tenant.lastName || ""}`.trim() : "Unknown";
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <button onClick={onBack} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 text-sm font-medium transition-colors">
+        <ArrowLeft size={16} /> Back to Contracts
+      </button>
+
+      <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-secondary to-blue-700 p-6 text-white">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2 font-bold text-lg">
+              <FileText size={20} /> Rental Contract #{contract.id}
+            </div>
+            <span className={cn("text-xs font-bold px-3 py-1 rounded-full", status.color)}>
+              <StatusIcon size={11} className="inline mr-1" />{status.label}
+            </span>
+          </div>
+          <p className="text-white/70 text-sm">{contract.room?.title} · {contract.room?.city}</p>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Parties */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-muted/30 rounded-2xl p-4">
+              <p className="text-xs text-muted-foreground mb-1 font-semibold uppercase tracking-wide">Landlord (Owner)</p>
+              <p className="font-bold">{ownerName}</p>
+              {contract.ownerSignature && (
+                <p className="text-xs text-green-600 font-medium mt-1 flex items-center gap-1">
+                  <CheckCircle2 size={11} /> Signed: "{contract.ownerSignature}"
+                </p>
+              )}
+            </div>
+            <div className="bg-muted/30 rounded-2xl p-4">
+              <p className="text-xs text-muted-foreground mb-1 font-semibold uppercase tracking-wide">Tenant</p>
+              <p className="font-bold">{tenantName}</p>
+              {contract.tenantSignature && (
+                <p className="text-xs text-green-600 font-medium mt-1 flex items-center gap-1">
+                  <CheckCircle2 size={11} /> Signed: "{contract.tenantSignature}"
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Terms */}
+          <div>
+            <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide mb-2">Contract Terms</p>
+            <div className="bg-muted/20 rounded-xl p-4 text-sm leading-relaxed">
+              <p className="mb-2"><strong>Property:</strong> {contract.room?.address}, {contract.room?.city}</p>
+              <p className="mb-2"><strong>Monthly Rent:</strong> NPR {contract.rentAmount.toLocaleString()}</p>
+              <p className="mb-2"><strong>Rental Period:</strong> {contract.startDate} to {contract.endDate}</p>
+              {contract.terms && <p className="mt-3 text-muted-foreground border-t pt-3">{contract.terms}</p>}
+            </div>
+          </div>
+
+          {/* Admin verification */}
+          {contract.status === "verified" && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-start gap-3">
+              <ShieldCheck size={20} className="text-green-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-green-800 text-sm">Admin Verified</p>
+                <p className="text-green-700 text-xs mt-0.5">This contract has been verified and is legally binding.</p>
+                {contract.adminNote && <p className="text-green-600 text-xs mt-1">{contract.adminNote}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Sign action */}
+          {((isOwner && !contract.ownerSignature) || (isTenant && !contract.tenantSignature)) && (
+            <Button
+              className="w-full rounded-xl h-12 text-base font-semibold gap-2"
+              onClick={() => setSigning(isOwner ? "owner" : "tenant")}
+            >
+              <PenLine size={16} /> Sign This Contract
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {signing && (
+        <SignModal
+          contractId={contract.id}
+          role={signing}
+          onClose={() => setSigning(null)}
+          onSigned={() => { setSigning(null); onRefresh(); onBack(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+export default function ContractsPage() {
+  const { userId, isVerified, isAdmin } = useAuth();
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [viewingId, setViewingId] = useState<number | null>(null);
+  const [signingId, setSigningId] = useState<number | null>(null);
+  const [signingRole, setSigningRole] = useState<string>("");
+  const { toast } = useToast();
+
+  const fetchContracts = async () => {
+    if (!userId) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/contracts/user/${userId}`);
+      const data = await res.json();
+      setContracts(data.contracts || []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchContracts(); }, [userId]);
+
+  const handleSign = (contractId: number, role: string) => {
+    setSigningId(contractId);
+    setSigningRole(role);
+  };
+
+  if (!isRealUserLoggedIn()) {
+    return (
+      <div className="max-w-xl mx-auto text-center py-20 bg-white rounded-3xl border shadow-xl px-6 mt-10">
+        <Lock size={48} className="text-muted-foreground/30 mx-auto mb-4" />
+        <h2 className="text-xl font-bold mb-2">Sign In Required</h2>
+        <p className="text-muted-foreground mb-6">You need to be logged in to view contracts.</p>
+        <Link href="/login"><Button className="rounded-xl">Sign In</Button></Link>
+      </div>
+    );
+  }
+
+  if (viewingId !== null) {
+    return (
+      <ContractDetail
+        id={viewingId}
+        userId={userId}
+        onBack={() => setViewingId(null)}
+        onRefresh={fetchContracts}
+      />
+    );
+  }
+
+  const active = contracts.filter(c => !["cancelled"].includes(c.status));
+  const cancelled = contracts.filter(c => c.status === "cancelled");
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6">
+      <div className="flex items-center gap-3">
+        <BackButton fallback="/contracts" label="Back" className="" />
+        <div>
+          <h1 className="text-2xl font-extrabold flex items-center gap-2">
+            <FileText className="text-primary" size={24} /> My Contracts
+          </h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Your rental agreements and their signing status</p>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" size={32} /></div>
+      ) : active.length === 0 && cancelled.length === 0 ? (
+        <div className="bg-white rounded-3xl border shadow-sm p-16 text-center">
+          <FileText size={48} className="text-muted-foreground/20 mx-auto mb-4" />
+          <h2 className="text-xl font-bold mb-2">No contracts yet</h2>
+          <p className="text-muted-foreground text-sm">
+            Contracts are created when a match is accepted by both parties.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {active.length > 0 && (
+            <div>
+              <h2 className="font-bold text-sm text-muted-foreground uppercase tracking-wider mb-3">Active ({active.length})</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {active.map(c => (
+                  <ContractCard
+                    key={c.id}
+                    contract={c}
+                    userId={userId}
+                    onSign={handleSign}
+                    onViewDetail={setViewingId}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {signingId && (
+        <SignModal
+          contractId={signingId}
+          role={signingRole}
+          onClose={() => setSigningId(null)}
+          onSigned={() => { setSigningId(null); fetchContracts(); }}
+        />
+      )}
+    </div>
+  );
+}

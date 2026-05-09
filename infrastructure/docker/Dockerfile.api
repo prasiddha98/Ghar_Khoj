@@ -1,0 +1,18 @@
+FROM node:22-slim
+
+WORKDIR /repo
+
+# Copy repository
+COPY . /repo
+
+# Install pnpm v8 globally and run workspace install
+RUN npm install -g pnpm@8 --force
+RUN pnpm install
+
+# Build the api-server package
+RUN pnpm --filter @workspace/api-server build
+
+ENV PORT=3000
+EXPOSE 3000
+
+CMD ["sh","-c","PORT=${PORT} pnpm --filter @workspace/api-server start"]
