@@ -255,6 +255,12 @@ export interface SendMessageInput {
 
 export interface MessageListResponse {
   messages: Message[];
+  partner?: {
+    id: number;
+    firstName: string;
+    lastName?: string;
+    isVerified: boolean;
+  };
 }
 
 export type VerificationDocDocType =

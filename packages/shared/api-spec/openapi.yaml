@@ -1085,7 +1085,19 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Message"
-      required: [messages]
+        partner:
+          type: object
+          properties:
+            id:
+              type: integer
+            firstName:
+              type: string
+            lastName:
+              type: string
+            isVerified:
+              type: boolean
+          required: [id, firstName, isVerified]
+      required: [messages, partner]
 
     VerificationDoc:
       type: object

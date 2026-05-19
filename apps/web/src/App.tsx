@@ -4,6 +4,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import { ShieldAlert } from "lucide-react";
 
 import Home from "@/pages/home";
 import SearchPage from "@/pages/search";
@@ -35,31 +37,44 @@ const queryClient = new QueryClient({
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   const { isRealUser, isLoading, user } = useAuth();
 
-  const isVerified = user?.isVerified ?? false;
-
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
 
-  if (!isRealUser || !user || !isVerified) {
+  if (!isRealUser || !user) {
     return <Login />;
   }
 
   return children;
 }
 
-function AdminRoute({ children }: { children: JSX.Element }) {
+function VerifiedRoute({ children }: { children: JSX.Element }) {
   const { isRealUser, isLoading, user } = useAuth();
+  const isVerified = user?.isVerified ?? false;
 
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
   }
 
-  const role = user?.role?.toLowerCase?.();
-  const isAdmin = role === "admin";
+  if (!isRealUser || !user) {
+    return <Login />;
+  }
 
-  if (!isRealUser || !user || !isAdmin) {
-    return <NotFound />;
+  if (!isVerified) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-lg w-full bg-white rounded-3xl border shadow-sm p-8 text-center">
+          <div className="mx-auto mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+            <ShieldAlert size={28} />
+          </div>
+          <h2 className="text-xl font-bold mb-2">Verified users only</h2>
+          <p className="text-muted-foreground mb-6">
+            Complete identity verification to access this section.
+          </p>
+          <Link href="/verification"><Button className="rounded-xl">Verify Now</Button></Link>
+        </div>
+      </div>
+    );
   }
 
   return children;
@@ -75,15 +90,15 @@ function Router() {
 
       {/* Protected routes */}
       <Route path="/messages">
-        <ProtectedRoute>
+        <VerifiedRoute>
           <Messages />
-        </ProtectedRoute>
+        </VerifiedRoute>
       </Route>
 
       <Route path="/matches">
-        <ProtectedRoute>
+        <VerifiedRoute>
           <MatchesPage />
-        </ProtectedRoute>
+        </VerifiedRoute>
       </Route>
 
       <Route path="/post">
@@ -93,9 +108,9 @@ function Router() {
       </Route>
 
       <Route path="/contracts">
-        <ProtectedRoute>
+        <VerifiedRoute>
           <ContractsPage />
-        </ProtectedRoute>
+        </VerifiedRoute>
       </Route>
 
       {/* Admin route */}

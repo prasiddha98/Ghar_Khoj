@@ -40,14 +40,19 @@ export default function SearchPage() {
 
   const { data, isLoading } = useGetRooms(queryParams as any);
 
-  const applyFilters = () => {
+  const buildQueryParams = (cityValue = city) => {
     const params: Record<string, unknown> = {};
-    if (city.trim()) params.city = city.trim();
+    if (cityValue.trim()) params.city = cityValue.trim();
     if (minPrice) params.minPrice = Number(minPrice);
     if (maxPrice) params.maxPrice = Number(maxPrice);
     if (roomType) params.roomType = roomType;
     if (tenantType) params.tenantType = tenantType;
     if (parking) params.parking = true;
+    return params;
+  };
+
+  const applyFilters = () => {
+    const params = buildQueryParams();
     setQueryParams(params);
     setShowFilters(false);
     const qs = city.trim() ? `?city=${encodeURIComponent(city.trim())}` : "";
@@ -88,7 +93,15 @@ export default function SearchPage() {
             className="w-full pl-11 h-12 bg-muted/50 border-transparent rounded-xl text-sm focus-visible:ring-primary focus-visible:bg-white"
           />
           {city && (
-            <button onClick={() => { setCity(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <button
+              onClick={() => {
+                setCity("");
+                const params = buildQueryParams("");
+                setQueryParams(params);
+                setLocation("/search");
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
               <X size={16} />
             </button>
           )}

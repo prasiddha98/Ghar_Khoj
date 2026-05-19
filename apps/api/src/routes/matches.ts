@@ -322,4 +322,82 @@ router.patch("/matches/:id/respond", authRequired, async (req: AuthedRequest, re
   }
 });
 
+/**
+ * GET /matches/participants/:tenantId/:ownerId
+ * Get match between two specific participants (for contract creation in chat)
+ */
+router.get("/matches/participants/:tenantId/:ownerId", authRequired, async (req: AuthedRequest, res) => {
+  try {
+    const tenantId = parseInt(req.params.tenantId);
+    const ownerId = parseInt(req.params.ownerId);
+
+    if (Number.isNaN(tenantId) || Number.isNaN(ownerId)) {
+      return res.status(400).json({
+        error: "validation_error",
+        message: "Invalid IDs"
+      });
+    }
+
+    // Verify user is one of the participants
+    if (req.user!.id !== tenantId && req.user!.id !== ownerId) {
+      return res.status(403).json({
+        error: "forbidden",
+        message: "You are not a participant in this match"
+      });
+    }
+
+    const [match] = await db.select().from(matchesTable)
+      .where(
+        and(
+          eq(matchesTable.tenantId, tenantId),
+          eq(matchesTable.ownerId, ownerId)
+        )
+      );
+
+    if (!match) {
+      return res.status(404).json({
+        error: "not_found",
+        message: "No accepted match between these participants"
+      });
+    }
+
+    // Enrich with room and user details
+    const [room] = await db.select().from(roomsTable)
+      .where(eq(roomsTable.id, match.roomId));
+    const [tenant] = await db.select().from(usersTable)
+      .where(eq(usersTable.id, match.tenantId));
+    const [owner] = await db.select().from(usersTable)
+      .where(eq(usersTable.id, match.ownerId));
+
+    return res.json({
+      ...match,
+      room,
+      tenant: tenant
+        ? {
+            id: tenant.id,
+            firstName: tenant.firstName,
+            lastName: tenant.lastName,
+            email: tenant.email,
+            phone: tenant.phone,
+          }
+        : null,
+      owner: owner
+        ? {
+            id: owner.id,
+            firstName: owner.firstName,
+            lastName: owner.lastName,
+            email: owner.email,
+            phone: owner.phone,
+          }
+        : null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Error fetching match by participants");
+    return res.status(500).json({
+      error: "internal_error",
+      message: "Failed to fetch match"
+    });
+  }
+});
+
 export default router;

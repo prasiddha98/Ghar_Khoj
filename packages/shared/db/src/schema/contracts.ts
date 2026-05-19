@@ -17,6 +17,7 @@ export const contractsTable = pgTable("contracts", {
   ownerSignedAt: timestamp("owner_signed_at"),
   tenantSignedAt: timestamp("tenant_signed_at"),
   status: text("status").notNull().default("draft"),
+  contractPdfUrl: text("contract_pdf_url"),
   adminVerifiedAt: timestamp("admin_verified_at"),
   adminNote: text("admin_note"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -209,7 +209,16 @@ router.get(
           )
         );
 
-      return res.json({ messages });
+      // Fetch partner user details for display
+      const [partner] = await db.select().from(usersTable).where(eq(usersTable.id, otherUserId));
+      const safePartner = partner ? {
+        id: partner.id,
+        firstName: partner.firstName,
+        lastName: partner.lastName,
+        isVerified: partner.isVerified,
+      } : null;
+
+      return res.json({ messages, partner: safePartner });
     } catch (err) {
       req.log.error({ err }, "Error fetching messages");
       return res.status(500).json({ 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,6 +32,7 @@ export function ContractDialog({
 }: ContractDialogProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [matchRoomPrice, setMatchRoomPrice] = useState<number | null>(null);
   const [formData, setFormData] = useState({
     rentAmount: "",
     startDate: new Date().toISOString().split("T")[0],
@@ -40,14 +41,83 @@ export function ContractDialog({
       .split("T")[0],
     terms: "",
   });
+
+  useEffect(() => {
+    if (!open) return;
+
+    const loadMatchDetails = async () => {
+      try {
+        const matchData = await customFetch(
+          `/api/matches/participants/${tenantId}/${ownerId}`
+        );
+
+        if (matchData?.room?.price) {
+          setMatchRoomPrice(matchData.room.price);
+          setFormData((prev) => ({
+            ...prev,
+            rentAmount: matchData.room.price.toString(),
+          }));
+        }
+      } catch (error) {
+        console.warn("Unable to prefill contract fields from match details", error);
+      }
+    };
+
+    loadMatchDetails();
+  }, [open, tenantId, ownerId]);
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation
     if (!formData.rentAmount || !formData.startDate || !formData.endDate) {
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const rentAmount = parseInt(formData.rentAmount);
+    if (isNaN(rentAmount) || rentAmount <= 0) {
+      toast({
+        title: "Invalid Rent Amount",
+        description: "Rent amount must be a positive number",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const startDate = new Date(formData.startDate);
+    const endDate = new Date(formData.endDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (startDate < today) {
+      toast({
+        title: "Invalid Start Date",
+        description: "Start date cannot be in the past",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (endDate <= startDate) {
+      toast({
+        title: "Invalid End Date",
+        description: "End date must be after the start date",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const monthsDiff = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+    if (monthsDiff < 1) {
+      toast({
+        title: "Invalid Contract Duration",
+        description: "Contract must be for at least 1 month",
         variant: "destructive",
       });
       return;
@@ -70,7 +140,7 @@ export function ContractDialog({
         return;
       }
 
-      // Create contract
+      // Create contract using the room's posted price
       const contractResponse = await customFetch("/api/contracts", {
         method: "POST",
         body: JSON.stringify({
@@ -78,7 +148,7 @@ export function ContractDialog({
           tenantId,
           ownerId,
           roomId: matchData.roomId,
-          rentAmount: parseInt(formData.rentAmount),
+          rentAmount: matchData.room?.price,
           startDate: formData.startDate,
           endDate: formData.endDate,
           terms: formData.terms,
@@ -139,28 +209,42 @@ export function ContractDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Tenant Name</Label>
-            <Input value={tenantName} disabled className="bg-muted" />
+            <Input value={`${tenantName} (Tenant)`} disabled className="bg-muted" />
           </div>
 
           <div className="space-y-2">
-            <Label>Owner Name</Label>
-            <Input value={ownerName} disabled className="bg-muted" />
+            <Label>Owner/Landlord Name</Label>
+            <Input value={`${ownerName} (Owner/Landlord)`} disabled className="bg-muted" />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="rentAmount">
-              Monthly Rent Amount (NPR) <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="rentAmount"
-              type="number"
-              placeholder="e.g., 15000"
-              value={formData.rentAmount}
-              onChange={(e) =>
-                setFormData({ ...formData, rentAmount: e.target.value })
-              }
-              required
-            />
+            <Label>Monthly Rent Amount (NPR)</Label>
+            {matchRoomPrice !== null ? (
+              <Input
+                value={matchRoomPrice.toString()}
+                disabled
+                className="bg-muted"
+              />
+            ) : (
+              <Input
+                id="rentAmount"
+                type="number"
+                placeholder="e.g., 15000"
+                min="1"
+                step="1"
+                value={formData.rentAmount}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "" || /^\d+$/.test(val)) {
+                    setFormData({ ...formData, rentAmount: val });
+                  }
+                }}
+                required
+              />
+            )}
+            <p className="text-xs text-muted-foreground">
+              The contract rent uses the room's posted price.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -172,12 +256,15 @@ export function ContractDialog({
                 id="startDate"
                 type="date"
                 value={formData.startDate}
-                onChange={(e) =>
-                  setFormData({ ...formData, startDate: e.target.value })
-                }
+                disabled
                 required
+                className="bg-muted"
               />
+              <p className="text-xs text-muted-foreground">
+                Start date is fixed for both parties and set to today.
+              </p>
             </div>
+
             <div className="space-y-2">
               <Label htmlFor="endDate">
                 End Date <span className="text-red-500">*</span>
@@ -185,12 +272,16 @@ export function ContractDialog({
               <Input
                 id="endDate"
                 type="date"
+                min={formData.startDate}
                 value={formData.endDate}
                 onChange={(e) =>
                   setFormData({ ...formData, endDate: e.target.value })
                 }
                 required
               />
+              <p className="text-xs text-muted-foreground">
+                Default contract length is 12 months, but you may adjust if needed.
+              </p>
             </div>
           </div>
 

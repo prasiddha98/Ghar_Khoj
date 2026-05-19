@@ -13,7 +13,7 @@ import path from "path";
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 const USE_LOCAL_STORAGE = process.env.USE_LOCAL_STORAGE === 'true';
-const LOCAL_STORAGE_DIR = path.join(process.cwd(), 'local-storage');
+export const LOCAL_STORAGE_DIR = process.env.LOCAL_STORAGE_DIR || path.join(process.cwd(), 'local-storage');
 
 if (USE_LOCAL_STORAGE) {
   if (!fs.existsSync(LOCAL_STORAGE_DIR)) {
@@ -144,8 +144,9 @@ export class ObjectStorageService {
   }
 
   async getObjectEntityFile(objectPath: string): Promise<File> {
-    if (USE_LOCAL_STORAGE) {
-      if (!objectPath.startsWith("/objects/local/")) {
+    if (USE_LOCAL_STORAGE) {      if (objectPath.startsWith("/api/storage/objects/")) {
+        objectPath = objectPath.replace("/api/storage/objects/", "/objects/");
+      }      if (!objectPath.startsWith("/objects/local/")) {
         throw new ObjectNotFoundError();
       }
       const objectId = objectPath.slice("/objects/local/".length);
@@ -153,7 +154,7 @@ export class ObjectStorageService {
       if (!fs.existsSync(filePath)) {
         throw new ObjectNotFoundError();
       }
-      // For local, we return a mock File object, but since it's not used much, we can throw not implemented
+      // For local object file usage, this method is not used for direct local download.
       throw new Error("Local storage getObjectEntityFile not implemented");
     }
 
@@ -182,8 +183,55 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  async getObject(objectPath: string): Promise<Buffer> {
+    const normalizedPath = this.normalizeObjectEntityPath(objectPath);
+
+    if (USE_LOCAL_STORAGE) {
+      if (!normalizedPath.startsWith("/objects/local/")) {
+        throw new ObjectNotFoundError();
+      }
+      const objectId = normalizedPath.slice("/objects/local/".length);
+      const filePath = path.join(LOCAL_STORAGE_DIR, objectId);
+      if (!fs.existsSync(filePath)) {
+        throw new ObjectNotFoundError();
+      }
+      return fs.readFileSync(filePath);
+    }
+
+    if (!normalizedPath.startsWith("/objects/")) {
+      throw new ObjectNotFoundError();
+    }
+
+    const parts = normalizedPath.slice(1).split("/");
+    if (parts.length < 2) {
+      throw new ObjectNotFoundError();
+    }
+
+    const entityId = parts.slice(1).join("/");
+    let entityDir = this.getPrivateObjectDir();
+    if (!entityDir.endsWith("/")) {
+      entityDir = `${entityDir}/`;
+    }
+    const objectEntityPath = `${entityDir}${entityId}`;
+    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    const [exists] = await file.exists();
+    if (!exists) {
+      throw new ObjectNotFoundError();
+    }
+    const [buffer] = await file.download();
+    return buffer;
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (USE_LOCAL_STORAGE) {
+      if (rawPath.startsWith("/api/storage/objects/")) {
+        return rawPath.replace("/api/storage/objects/", "/objects/");
+      }
+      if (rawPath.startsWith("/storage/objects/")) {
+        return rawPath.replace("/storage/objects/", "/objects/");
+      }
       const match = rawPath.match(/\/api\/storage\/local-upload\/(.+)/);
       if (match) {
         return `/objects/local/${match[1]}`;

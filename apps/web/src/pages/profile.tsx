@@ -125,7 +125,6 @@ export default function Profile() {
               <ProfileMenuItem href="/admin" icon={UserCheck} iconBg="bg-amber-100 text-amber-600" title="Pending Verifications" subtitle="Review identity documents" />
               <ProfileMenuItem href="/admin" icon={Building} iconBg="bg-primary/10 text-primary" title="All Listings" subtitle="Manage room listings" />
               <ProfileMenuItem href="/admin" icon={Users} iconBg="bg-blue-100 text-blue-600" title="All Users" subtitle="View and manage user accounts" />
-              <ProfileMenuItem href="/contracts" icon={FileText} iconBg="bg-green-100 text-green-600" title="Contracts" subtitle="Review and verify rental contracts" />
             </>
           )}
 
@@ -133,18 +132,26 @@ export default function Profile() {
             <>
               <ProfileMenuItem href="/my-listings" icon={Building} iconBg="bg-green-100 text-green-600" title="My Listings" subtitle="Manage your room properties" />
               <ProfileMenuItem href="/post" icon={Heart} iconBg="bg-primary/10 text-primary" title="Post New Room" subtitle="Add a new room listing" />
-              <ProfileMenuItem href="/matches" icon={Users} iconBg="bg-blue-100 text-blue-600" title="Interested Tenants" subtitle="Tenants who want your rooms" />
-              <ProfileMenuItem href="/messages" icon={MessageSquare} iconBg="bg-purple-100 text-purple-600" title="Messages" subtitle="Chat with potential tenants" />
-              <ProfileMenuItem href="/contracts" icon={FileText} iconBg="bg-amber-100 text-amber-600" title="Contracts" subtitle="View and sign rental agreements" />
+              {user.isVerified && (
+                <>
+                  <ProfileMenuItem href="/matches" icon={Users} iconBg="bg-blue-100 text-blue-600" title="Interested Tenants" subtitle="Tenants who want your rooms" />
+                  <ProfileMenuItem href="/messages" icon={MessageSquare} iconBg="bg-purple-100 text-purple-600" title="Messages" subtitle="Chat with potential tenants" />
+                  <ProfileMenuItem href="/contracts" icon={FileText} iconBg="bg-amber-100 text-amber-600" title="Contracts" subtitle="View and sign rental agreements" />
+                </>
+              )}
             </>
           )}
 
           {isTenant && (
             <>
               <ProfileMenuItem href="/recommendations" icon={Star} iconBg="bg-amber-100 text-amber-600" title="AI Recommendations" subtitle="Rooms picked just for you" />
-              <ProfileMenuItem href="/matches" icon={Heart} iconBg="bg-primary/10 text-primary" title="My Matches" subtitle="Rooms you've shown interest in" />
-              <ProfileMenuItem href="/messages" icon={MessageSquare} iconBg="bg-blue-100 text-blue-600" title="Messages" subtitle="Chat with room owners" />
-              <ProfileMenuItem href="/contracts" icon={FileText} iconBg="bg-green-100 text-green-600" title="Contracts" subtitle="View and sign rental agreements" />
+              {user.isVerified && (
+                <>
+                  <ProfileMenuItem href="/matches" icon={Heart} iconBg="bg-primary/10 text-primary" title="My Matches" subtitle="Rooms you've shown interest in" />
+                  <ProfileMenuItem href="/messages" icon={MessageSquare} iconBg="bg-blue-100 text-blue-600" title="Messages" subtitle="Chat with room owners" />
+                  <ProfileMenuItem href="/contracts" icon={FileText} iconBg="bg-green-100 text-green-600" title="Contracts" subtitle="View and sign rental agreements" />
+                </>
+              )}
               {!user.isVerified && (
                 <ProfileMenuItem href="/verification" icon={ShieldCheck} iconBg="bg-green-100 text-green-600" title="Verify Identity" subtitle="Upload ID to unlock features" />
               )}

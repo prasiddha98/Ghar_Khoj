@@ -28,6 +28,7 @@ router.get("/users/:id", async (req, res) => {
       id: usersTable.id,
       firstName: usersTable.firstName,
       lastName: usersTable.lastName,
+      email: usersTable.email,
       role: usersTable.role,
       isVerified: usersTable.isVerified,
       verificationStatus: usersTable.verificationStatus,

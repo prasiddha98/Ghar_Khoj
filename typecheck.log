@@ -1,0 +1,26 @@
+Scope: all 8 workspace projects
+Progress: resolved 1, reused 0, downloaded 0, added 0
+apps/api                                 | [WARN] deprecated @types/bcryptjs@3.0.0
+Progress: resolved 567, reused 558, downloaded 2, added 0
+Progress: resolved 586, reused 558, downloaded 20, added 0
+[WARN] 2 deprecated subdependencies found: uuid@8.3.2, uuid@9.0.1
+Packages: +24
+++++++++++++++++++++++++
+Progress: resolved 587, reused 558, downloaded 24, added 24, done
+
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: core-js@3.49.0
+
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+[ERROR] Command failed with exit code 1: pnpm install
+
+pnpm: Command failed with exit code 1: pnpm install
+    at getFinalError (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:28661:14)
+    at makeError (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:30968:21)
+    at getSyncResult (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:32812:10)
+    at spawnSubprocessSync (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:32772:14)
+    at execaCoreSync (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:32702:23)
+    at callBoundExeca (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:35230:23)
+    at boundExeca (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:35207:49)
+    at sync (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:35362:14)
+    at runPnpmCli (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:211041:5)
+    at runDepsStatusCheck (file:///opt/homebrew/lib/node_modules/pnpm/dist/pnpm.mjs:212745:7)

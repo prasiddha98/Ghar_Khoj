@@ -3,8 +3,10 @@ import { db } from "@workspace/db";
 import { verificationDocsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { authRequired, requireRole, type AuthedRequest } from "../middlewares/auth";
+import { ObjectStorageService } from "../lib/objectStorage";
 
 const router: IRouter = Router();
+const objectStorage = new ObjectStorageService();
 
 /**
  * POST /verification
@@ -138,9 +140,16 @@ router.post("/verification", authRequired, async (req: AuthedRequest, res) => {
       }
     }
 
-    const normalizedDocUrl = typeof docUrl === 'string' && docUrl.trim() !== '' ? docUrl.trim() : "pending-upload";
-    const normalizedSelfieUrl = typeof selfieUrl === 'string' && selfieUrl.trim() !== '' ? selfieUrl.trim() : "pending-upload";
-    const normalizedDocPhotoUrl = typeof docPhotoUrl === 'string' && docPhotoUrl.trim() !== '' ? docPhotoUrl.trim() : null;
+    const normalizeVerificationPath = (value: any) => {
+      if (typeof value !== 'string' || value.trim() === '') {
+        return value;
+      }
+      return objectStorage.normalizeObjectEntityPath(value.trim());
+    };
+
+    const normalizedDocUrl = normalizeVerificationPath(docUrl) || "pending-upload";
+    const normalizedSelfieUrl = normalizeVerificationPath(selfieUrl) || "pending-upload";
+    const normalizedDocPhotoUrl = normalizeVerificationPath(docPhotoUrl) || null;
 
     console.log('Inserting verification doc with data:', {
       userId,

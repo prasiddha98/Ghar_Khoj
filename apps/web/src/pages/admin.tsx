@@ -6,11 +6,12 @@ import {
   Users, Home, ShieldCheck, MessageSquare, BarChart2, CheckCircle2,
   Building, AlertTriangle, Trash2, RefreshCw, XCircle, Crown, Key,
   ChevronDown, ChevronLeft, ChevronRight, UserCog, Search, Eye, TrendingUp, Clock, Star, Ban,
-  FileText, PenLine, ArrowLeft
+  FileText, PenLine, ArrowLeft, Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { ContractViewer } from "@/components/contract-viewer";
 import { useToast } from "@/hooks/use-toast";
 import { cn, getMediaUrl } from "@/lib/utils";
 
@@ -37,7 +38,7 @@ interface Room {
 }
 interface AdminContract {
   id: number; matchId: number; tenantId: number; ownerId: number; roomId: number;
-  rentAmount: number; startDate: string; endDate: string;
+  rentAmount: number; startDate: string; endDate: string; terms?: string; contractPdfUrl?: string;
   ownerSignature?: string; tenantSignature?: string;
   status: string; adminNote?: string; createdAt: string;
   tenant?: { id: number; firstName: string; lastName?: string; email: string };
@@ -49,6 +50,12 @@ function useFetch<T>(url: string) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const refetch = () => {
+    if (!url) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (typeof window !== "undefined") {
@@ -70,6 +77,11 @@ function useFetch<T>(url: string) {
   };
   useEffect(() => { refetch(); }, [url]);
   return { data, loading, refetch };
+}
+
+function resolveVerificationImageUrl(rawUrl?: string | null) {
+  if (!rawUrl || rawUrl === "pending-upload") return undefined;
+  return getMediaUrl(rawUrl) || undefined;
 }
 
 const ADMIN_CAPABILITIES = [
@@ -108,10 +120,12 @@ export default function AdminDashboard() {
   const [rejectTarget, setRejectTarget] = useState<number | null>(null);
   const [roleTarget, setRoleTarget] = useState<number | null>(null);
   const [userSearch, setUserSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "owner" | "tenant">("all");
   const [roomSearch, setRoomSearch] = useState("");
   const [contractNote, setContractNote] = useState("");
   const [contractTarget, setContractTarget] = useState<number | null>(null);
   const [imageModal, setImageModal] = useState<{ url: string; type: string } | null>(null);
+  const [viewingOwnerRooms, setViewingOwnerRooms] = useState<number | null>(null);
   const { toast } = useToast();
 
   const stats = useFetch<Stats>("/api/admin/stats");
@@ -119,6 +133,9 @@ export default function AdminDashboard() {
   const users = useFetch<{ users: AdminUser[]; total: number }>("/api/admin/users");
   const rooms = useFetch<{ rooms: Room[]; total: number }>("/api/admin/rooms");
   const contracts = useFetch<{ contracts: AdminContract[] }>("/api/admin/contracts");
+  const ownerRooms = useFetch<{ rooms: Room[] }>(
+    viewingOwnerRooms ? `/api/rooms/owner/${viewingOwnerRooms}` : ""
+  );
 
   if (!isAdmin) {
     return (
@@ -226,6 +243,7 @@ export default function AdminDashboard() {
 
   const filteredUsers = users.data?.users?.filter(u =>
     `${u.firstName} ${u.lastName} ${u.email}`.toLowerCase().includes(userSearch.toLowerCase())
+    && (roleFilter === "all" || u.role === roleFilter)
   ) || [];
 
   const filteredRooms = rooms.data?.rooms?.filter(r =>
@@ -270,7 +288,7 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex gap-0 overflow-x-auto rounded-3xl bg-white/10 p-1 shadow-inner backdrop-blur-sm">
-            {tabs.map(t => (
+            {!viewingOwnerRooms && tabs.map(t => (
               <button key={t.id} onClick={() => setTab(t.id)}
                 className={cn(
                   "flex items-center gap-2 whitespace-nowrap rounded-2xl px-4 py-3 text-sm font-semibold transition-all",
@@ -294,8 +312,79 @@ export default function AdminDashboard() {
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
 
+        {/* ══════════ VIEWING OWNER'S ROOMS ══════════ */}
+        {viewingOwnerRooms && (
+          <div className="space-y-4 mb-8">
+            <button onClick={() => setViewingOwnerRooms(null)} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 font-medium transition-colors">
+              <ArrowLeft size={16} /> Back to Users
+            </button>
+            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b">
+                <h2 className="font-bold text-lg">Rooms by Owner #{viewingOwnerRooms}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">All listings from this owner</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/30">
+                    <tr>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Room</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">City</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Price</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Status</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Listed</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {ownerRooms.loading
+                      ? <tr><td colSpan={6} className="p-4 text-center text-muted-foreground"><Loader2 className="animate-spin inline" size={16} /> Loading...</td></tr>
+                      : !ownerRooms.data?.rooms?.length
+                      ? <tr><td colSpan={6} className="p-4 text-center text-muted-foreground">No rooms from this owner</td></tr>
+                      : ownerRooms.data.rooms.map(r => (
+                        <tr key={r.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="p-4">
+                            <p className="font-semibold line-clamp-1">{r.title}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{r.roomType}</p>
+                          </td>
+                          <td className="p-4 text-muted-foreground text-xs">{r.city}</td>
+                          <td className="p-4 font-semibold">NPR {r.price.toLocaleString()}</td>
+                          <td className="p-4">
+                            <div className="flex flex-col gap-1">
+                              {r.isVerified
+                                ? <span className="text-green-600 text-xs font-semibold flex items-center gap-1"><CheckCircle2 size={12} /> Verified</span>
+                                : <span className="text-amber-600 text-xs font-semibold flex items-center gap-1"><Clock size={12} /> Unverified</span>}
+                              {!r.isAvailable && <span className="text-red-600 text-xs font-medium">Rented</span>}
+                            </div>
+                          </td>
+                          <td className="p-4 text-muted-foreground text-xs">{new Date(r.createdAt).toLocaleDateString("en-NP")}</td>
+                          <td className="p-4">
+                            <div className="flex gap-2">
+                              <Link href={`/room/${r.id}`}>
+                                <button className="text-xs bg-muted hover:bg-muted/80 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 transition-colors">
+                                  <Eye size={12} /> View
+                                </button>
+                              </Link>
+                              {!r.isVerified && (
+                                <button onClick={() => verifyRoom(r.id)} className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 transition-colors">
+                                  <ShieldCheck size={12} /> Verify
+                                </button>
+                              )}
+                              <button onClick={() => deleteRoom(r.id)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 transition-colors">
+                                <Trash2 size={12} /> Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ══════════ OVERVIEW ══════════ */}
-        {tab === "overview" && (
+        {tab === "overview" && !viewingOwnerRooms && (
           <div className="space-y-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard icon={Users} label="Total Users" value={stats.data?.totalUsers ?? 0} color="bg-blue-100 text-blue-600" />
@@ -382,7 +471,7 @@ export default function AdminDashboard() {
         )}
 
         {/* ══════════ VERIFICATIONS ══════════ */}
-        {tab === "verifications" && (
+        {tab === "verifications" && !viewingOwnerRooms && (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
               {(["pending", "approved", "rejected"] as const).map(status => {
@@ -448,41 +537,62 @@ export default function AdminDashboard() {
                       </div>
 
                       {/* Document images */}
-                      <div className="flex gap-3 mt-2">
-                        {((v.docPhotoUrl && v.docPhotoUrl !== "pending-upload") || (v.docUrl && v.docUrl !== "pending-upload")) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const validDocUrl = (v.docPhotoUrl && v.docPhotoUrl !== "pending-upload")
-                                ? v.docPhotoUrl
-                                : (v.docUrl && v.docUrl !== "pending-upload" ? v.docUrl : "");
-                              if (!validDocUrl) return;
-                              setImageModal({
-                                url: getMediaUrl(validDocUrl) || validDocUrl,
-                                type: "Document Photo",
-                              });
-                            }}
-                            className="flex items-center gap-1.5 text-xs text-primary underline hover:no-underline"
-                          >
-                            <Eye size={12} /> View Document Photo
-                          </button>
-                        )}
-                        {v.selfieUrl && v.selfieUrl !== "pending-upload" && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const validSelfieUrl = v.selfieUrl && v.selfieUrl !== "pending-upload" ? v.selfieUrl : "";
-                              if (!validSelfieUrl) return;
-                              setImageModal({
-                                url: getMediaUrl(validSelfieUrl) || validSelfieUrl,
-                                type: "Selfie",
-                              });
-                            }}
-                            className="flex items-center gap-1.5 text-xs text-primary underline hover:no-underline"
-                          >
-                            <Eye size={12} /> View Selfie
-                          </button>
-                        )}
+                      <div className="grid grid-cols-2 gap-3 mt-2">
+                        {(() => {
+                          const docImageUrl = resolveVerificationImageUrl(v.docPhotoUrl) ?? resolveVerificationImageUrl(v.docUrl);
+                          const selfieImageUrl = resolveVerificationImageUrl(v.selfieUrl);
+                          return (
+                            <>
+                              <div className="rounded-2xl overflow-hidden border border-border bg-slate-50">
+                                <div className="px-3 py-2 bg-slate-100 text-xs font-semibold text-slate-700">Document Photo</div>
+                                {docImageUrl ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setImageModal({ url: docImageUrl, type: "Document Photo" })}
+                                    className="block w-full h-full"
+                                  >
+                                    <img
+                                      src={docImageUrl}
+                                      alt="Document photo"
+                                      className="w-full h-32 object-cover"
+                                      onError={(event) => {
+                                        const target = event.currentTarget;
+                                        target.onerror = null;
+                                        target.src = getMediaUrl(`${import.meta.env.BASE_URL}images/empty-state.png`) || "/images/empty-state.png";
+                                      }}
+                                    />
+                                  </button>
+                                ) : (
+                                  <div className="h-32 flex items-center justify-center px-3 text-xs text-muted-foreground">No document image available</div>
+                                )}
+                              </div>
+
+                              <div className="rounded-2xl overflow-hidden border border-border bg-slate-50">
+                                <div className="px-3 py-2 bg-slate-100 text-xs font-semibold text-slate-700">Selfie</div>
+                                {selfieImageUrl ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setImageModal({ url: selfieImageUrl, type: "Selfie" })}
+                                    className="block w-full h-full"
+                                  >
+                                    <img
+                                      src={selfieImageUrl}
+                                      alt="Selfie"
+                                      className="w-full h-32 object-cover"
+                                      onError={(event) => {
+                                        const target = event.currentTarget;
+                                        target.onerror = null;
+                                        target.src = getMediaUrl(`${import.meta.env.BASE_URL}images/empty-state.png`) || "/images/empty-state.png";
+                                      }}
+                                    />
+                                  </button>
+                                ) : (
+                                  <div className="h-32 flex items-center justify-center px-3 text-xs text-muted-foreground">No selfie available</div>
+                                )}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
 
                       {v.adminNote && (
@@ -511,7 +621,7 @@ export default function AdminDashboard() {
         )}
 
         {/* ══════════ USERS ══════════ */}
-        {tab === "users" && (
+        {tab === "users" && !viewingOwnerRooms && (
           <div className="space-y-4">
             <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b flex flex-col sm:flex-row sm:items-center gap-3">
@@ -519,10 +629,22 @@ export default function AdminDashboard() {
                   <h2 className="font-bold text-lg">All Users</h2>
                   <p className="text-xs text-muted-foreground">Change roles, view verification status</p>
                 </div>
-                <div className="relative sm:ml-auto">
-                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input value={userSearch} onChange={e => setUserSearch(e.target.value)}
-                    placeholder="Search users..." className="pl-9 h-9 w-64 rounded-xl text-sm" />
+                <div className="relative sm:ml-auto flex items-center gap-3">
+                  <div className="flex items-center gap-2 bg-muted/10 rounded-xl p-1">
+                    <button onClick={() => setRoleFilter("all")}
+                      className={cn("text-xs px-3 py-1 rounded-lg font-medium", roleFilter === "all" ? "bg-white text-slate-900" : "text-muted-foreground hover:bg-white/5")}>All</button>
+                    <button onClick={() => setRoleFilter("admin")}
+                      className={cn("text-xs px-3 py-1 rounded-lg font-medium", roleFilter === "admin" ? "bg-white text-slate-900" : "text-muted-foreground hover:bg-white/5")}>Admins</button>
+                    <button onClick={() => setRoleFilter("owner")}
+                      className={cn("text-xs px-3 py-1 rounded-lg font-medium", roleFilter === "owner" ? "bg-white text-slate-900" : "text-muted-foreground hover:bg-white/5")}>Owners</button>
+                    <button onClick={() => setRoleFilter("tenant")}
+                      className={cn("text-xs px-3 py-1 rounded-lg font-medium", roleFilter === "tenant" ? "bg-white text-slate-900" : "text-muted-foreground hover:bg-white/5")}>Tenants</button>
+                  </div>
+                  <div className="relative">
+                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input value={userSearch} onChange={e => setUserSearch(e.target.value)}
+                      placeholder="Search users..." className="pl-9 h-9 w-64 rounded-xl text-sm" />
+                  </div>
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -572,11 +694,17 @@ export default function AdminDashboard() {
                         </td>
                         <td className="p-4 text-muted-foreground text-xs">{new Date(u.createdAt).toLocaleDateString("en-NP")}</td>
                         <td className="p-4">
-                          <div className="relative">
+                          <div className="relative flex gap-2">
                             <button onClick={() => setRoleTarget(roleTarget === u.id ? null : u.id)}
                               className="flex items-center gap-1.5 text-xs bg-muted hover:bg-muted/80 px-3 py-1.5 rounded-lg font-medium transition-colors">
                               <UserCog size={13} /> Change Role <ChevronDown size={12} />
                             </button>
+                            {u.role === "owner" && (
+                              <button onClick={() => setViewingOwnerRooms(u.id)}
+                                className="flex items-center gap-1.5 text-xs bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-lg font-medium transition-colors">
+                                <Home size={13} /> View Rooms
+                              </button>
+                            )}
                             <AnimatePresence>
                               {roleTarget === u.id && (
                                 <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }}
@@ -603,7 +731,7 @@ export default function AdminDashboard() {
         )}
 
         {/* ══════════ ROOMS ══════════ */}
-        {tab === "rooms" && (
+        {tab === "rooms" && !viewingOwnerRooms && (
           <div className="space-y-4">
             <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b flex flex-col sm:flex-row sm:items-center gap-3">
@@ -643,7 +771,7 @@ export default function AdminDashboard() {
                             {r.isVerified
                               ? <span className="text-green-600 text-xs font-semibold flex items-center gap-1"><CheckCircle2 size={12} /> Verified</span>
                               : <span className="text-amber-600 text-xs font-semibold flex items-center gap-1"><Clock size={12} /> Unverified</span>}
-                            {!r.isAvailable && <span className="text-red-600 text-xs font-medium">Not Available</span>}
+                            {!r.isAvailable && <span className="text-red-600 text-xs font-medium">Rented</span>}
                           </div>
                         </td>
                         <td className="p-4 text-muted-foreground text-xs">{new Date(r.createdAt).toLocaleDateString("en-NP")}</td>
@@ -674,7 +802,7 @@ export default function AdminDashboard() {
         )}
 
         {/* ══════════ CONTRACTS ══════════ */}
-        {tab === "contracts" && (
+        {tab === "contracts" && !viewingOwnerRooms && (
           <div className="space-y-4">
             <div className="grid grid-cols-4 gap-4">
               {(["fully_signed", "verified", "draft", "cancelled"] as const).map(status => {
@@ -750,9 +878,10 @@ export default function AdminDashboard() {
                           )}
                         </div>
 
-                        {c.status === "fully_signed" && (
-                          <div className="flex flex-col gap-2 shrink-0">
-                            {contractTarget === c.id ? (
+                        <div className="flex flex-col gap-2 shrink-0">
+                          <ContractViewer contract={c} />
+                          {c.status === "fully_signed" ? (
+                            contractTarget === c.id ? (
                               <div className="space-y-2 p-3 border rounded-xl bg-muted/20 w-56">
                                 <p className="text-xs font-semibold">Admin Note (optional)</p>
                                 <Input
@@ -784,15 +913,13 @@ export default function AdminDashboard() {
                               >
                                 <ShieldCheck size={15} /> Review Contract
                               </button>
-                            )}
-                          </div>
-                        )}
-
-                        {c.status === "verified" && (
-                          <div className="flex items-center gap-1.5 text-green-600 text-sm font-semibold shrink-0">
-                            <CheckCircle2 size={16} /> Verified
-                          </div>
-                        )}
+                            )
+                          ) : c.status === "verified" ? (
+                            <div className="flex items-center gap-1.5 text-green-600 text-sm font-semibold shrink-0">
+                              <CheckCircle2 size={16} /> Verified
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   );

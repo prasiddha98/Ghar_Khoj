@@ -35,6 +35,15 @@ router.get("/admin/stats", authRequired, requireRole(["admin"]), async (req: Aut
   }
 });
 
+function normalizeVerificationMediaUrl(rawUrl: string | null) {
+  if (!rawUrl) return null;
+  try {
+    return objectStorageService.normalizeObjectEntityPath(rawUrl);
+  } catch {
+    return rawUrl;
+  }
+}
+
 router.get("/admin/verifications", authRequired, requireRole(["admin"]), async (req: AuthedRequest, res) => {
   try {
     const verifications = await db.select({
@@ -52,7 +61,15 @@ router.get("/admin/verifications", authRequired, requireRole(["admin"]), async (
       adminNote: verificationDocsTable.adminNote,
       createdAt: verificationDocsTable.createdAt,
     }).from(verificationDocsTable).orderBy(desc(verificationDocsTable.createdAt));
-    return res.json({ verifications });
+
+    const normalizedVerifications = verifications.map((verification) => ({
+      ...verification,
+      docUrl: normalizeVerificationMediaUrl(verification.docUrl),
+      selfieUrl: normalizeVerificationMediaUrl(verification.selfieUrl),
+      docPhotoUrl: normalizeVerificationMediaUrl(verification.docPhotoUrl),
+    }));
+
+    return res.json({ verifications: normalizedVerifications });
   } catch (err) {
     req.log.error({ err }, "Error fetching verifications");
     return res.status(500).json({ error: "internal_error", message: "Failed to fetch verifications" });

@@ -15,6 +15,7 @@ interface Room {
   id: number; title: string; city: string; address: string; price: number;
   roomType: string; tenantType: string; isVerified: boolean; isAvailable: boolean;
   photos: string[]; amenities: string[]; createdAt: string;
+  hasActiveContract?: boolean;
 }
 
 function useOwnerRooms(ownerId: number) {
@@ -34,7 +35,7 @@ function useOwnerRooms(ownerId: number) {
   };
 
   useEffect(() => { refetch(); }, [ownerId]);
-  return { rooms, loading, refetch };
+  return { rooms, loading, refetch, setRooms };
 }
 
 const OWNER_CAPABILITIES = [
@@ -48,7 +49,7 @@ const OWNER_CAPABILITIES = [
 
 export default function OwnerDashboard() {
   const { user, userId, isOwner } = useAuth();
-  const { rooms, loading, refetch } = useOwnerRooms(userId);
+  const { rooms, loading, refetch, setRooms } = useOwnerRooms(userId);
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"listings" | "capabilities">("listings");
 
@@ -57,14 +58,25 @@ export default function OwnerDashboard() {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    const r = await fetch(`/api/rooms/${room.id}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify({ isAvailable: !room.isAvailable }),
-    });
-    if (r.ok) {
-      toast({ title: `Room marked as ${!room.isAvailable ? "available" : "rented"}` });
+    try {
+      const r = await fetch(`/api/rooms/${room.id}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ isAvailable: !room.isAvailable }),
+      });
+
+      const body = await r.json().catch(() => null);
+      if (!r.ok) {
+        toast({ title: "Failed to update availability", description: body?.message || "Please try again.", variant: "destructive" });
+        return;
+      }
+
+      const updatedAvailability = typeof body?.isAvailable === "boolean" ? body.isAvailable : !room.isAvailable;
+      setRooms(current => current.map(item => item.id === room.id ? { ...item, isAvailable: updatedAvailability } : item));
+      toast({ title: `Room marked as ${updatedAvailability ? "available" : "rented"}` });
       refetch();
+    } catch (error) {
+      toast({ title: "Failed to update availability", description: (error as Error)?.message || "Network error.", variant: "destructive" });
     }
   };
 
@@ -213,11 +225,18 @@ export default function OwnerDashboard() {
                           </button>
                         </Link>
                         <button onClick={() => toggleAvailability(room)}
+                          disabled={!room.isAvailable && room.hasActiveContract}
                           className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors font-semibold border",
                             room.isAvailable
                               ? "text-gray-600 hover:bg-gray-50 border-gray-200"
-                              : "text-green-600 hover:bg-green-50 border-green-200")}>
-                          {room.isAvailable ? <><EyeOff size={13} /> Mark Rented</> : <><Eye size={13} /> Mark Available</>}
+                              : room.hasActiveContract
+                                ? "text-muted-foreground bg-muted/50 border-muted"
+                                : "text-green-600 hover:bg-green-50 border-green-200")}>
+                          {room.isAvailable
+                            ? <><EyeOff size={13} /> Mark Rented</>
+                            : room.hasActiveContract
+                              ? <><Eye size={13} /> Rented (Contract Active)</>
+                              : <><Eye size={13} /> Mark Available</>}
                         </button>
                         <button onClick={() => deleteRoom(room.id)}
                           className="ml-auto flex items-center gap-1.5 text-xs text-destructive hover:bg-destructive/10 px-3 py-1.5 rounded-lg transition-colors font-semibold border border-destructive/20">

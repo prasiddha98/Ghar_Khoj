@@ -147,10 +147,14 @@ export default function MatchesPage() {
     if (!userId) return;
     setLoading(true);
     try {
+      const token = localStorage.getItem("ghar_khoj_jwt");
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+
       const url = isOwner
         ? `/api/matches/owner/${userId}`
         : `/api/matches/tenant/${userId}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { headers });
       const data = await res.json();
       setMatches(data.matches || []);
     } catch {
@@ -165,9 +169,13 @@ export default function MatchesPage() {
   const handleRespond = async (matchId: number, decision: "accepted" | "rejected") => {
     setResponding(matchId);
     try {
+      const token = localStorage.getItem("ghar_khoj_jwt");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
       const res = await fetch(`/api/matches/${matchId}/respond`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ role: "owner", decision }),
       });
       if (!res.ok) throw new Error("Failed");

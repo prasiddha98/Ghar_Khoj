@@ -323,6 +323,7 @@ export async function customFetch<T = unknown>(
   input: RequestInfo | URL,
   options: CustomFetchOptions = {},
 ): Promise<T> {
+  console.warn("🔴 CUSTOM FETCH CALLED - THIS SHOULD APPEAR IN CONSOLE");
   input = applyBaseUrl(input);
   const { responseType = "auto", headers: headersInit, ...init } = options;
 
@@ -348,10 +349,29 @@ export async function customFetch<T = unknown>(
 
   // Attach bearer token when an auth getter is configured and no
   // Authorization header has been explicitly provided.
+  const debugUrl = resolveUrl(input);
+  console.log(`[customFetch] Starting request to: ${debugUrl}`);
+  console.log(`[customFetch] Auth getter configured: ${!!_authTokenGetter}`);
+  
   if (_authTokenGetter && !headers.has("authorization")) {
-    const token = await _authTokenGetter();
-    if (token) {
-      headers.set("authorization", `Bearer ${token}`);
+    try {
+      const token = await _authTokenGetter();
+      console.log(`[customFetch] Token from getter: ${token ? `exists (${token.substring(0, 20)}...)` : "null"}`);
+      if (token) {
+        headers.set("authorization", `Bearer ${token}`);
+        console.log("[customFetch] ✓ Authorization header set");
+      } else {
+        console.warn("[customFetch] ⚠️  Token getter returned null - user may not be logged in");
+      }
+    } catch (err) {
+      console.error("[customFetch] ❌ Error calling token getter:", err);
+    }
+  } else {
+    if (!_authTokenGetter) {
+      console.warn("[customFetch] ❌ NO AUTH GETTER CONFIGURED - did setAuthTokenGetter() get called?");
+    }
+    if (headers.has("authorization")) {
+      console.log("[customFetch] Authorization header already provided");
     }
   }
 

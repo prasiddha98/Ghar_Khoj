@@ -124,7 +124,7 @@ export function RoomCard({ room, recommendationScore, recommendationTag, classNa
               <span className="text-xl font-bold text-primary">{formatCurrency(room.price)}</span>
               <span className="text-xs text-muted-foreground font-medium"> /month</span>
             </div>
-            {recommendationScore && (
+            {recommendationScore !== undefined && recommendationScore !== null && (
               <div className="flex items-center gap-1">
                 <span className="text-xs font-bold text-secondary bg-secondary/10 px-2 py-1 rounded-md">
                   {Math.round(recommendationScore * 100)}% Match

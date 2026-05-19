@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useRoute } from "wouter";
-import { Send, Lock, ArrowLeft, Circle, Building, MessageSquare, Paperclip, X, Image, Video, Loader2 } from "lucide-react";
+import { Send, Lock, ArrowLeft, Circle, Building, MessageSquare, Paperclip, X, Image, Video, Loader2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useGetMessages, useSendMessage, getGetMessagesQueryKey } from "@workspace/api-client-react";
+import { useGetMessages, useSendMessage, getGetMessagesQueryKey, customFetch } from "@workspace/api-client-react";
 import { Link, useLocation } from "wouter";
 import { format, isToday, isYesterday } from "date-fns";
 import { motion } from "framer-motion";
@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { uploadFile } from "@/hooks/use-upload";
 import { useToast } from "@/hooks/use-toast";
 import { BackButton } from "@/components/back-button";
+import { ContractDialog } from "@/components/contract-dialog";
 
 interface ConvPartner {
   id: number; firstName: string; lastName?: string; role: string; isVerified: boolean;
@@ -27,6 +28,26 @@ interface Conversation {
   lastMessage: LastMessage;
   unreadCount: number;
 }
+interface ThreadMessage {
+  id: number;
+  senderId: number;
+  receiverId: number;
+  content: string;
+  roomId?: number;
+  isRead: boolean;
+  createdAt: string;
+  mediaUrl?: string;
+  mediaType?: string;
+}
+interface MessageListResponseWithPartner {
+  messages: ThreadMessage[];
+  partner: {
+    id: number;
+    firstName: string;
+    lastName?: string;
+    isVerified: boolean;
+  };
+}
 
 function formatMsgTime(dateStr: string) {
   const d = new Date(dateStr);
@@ -39,18 +60,37 @@ function useConversations(userId: number | undefined, enabled: boolean) {
   const [data, setData] = useState<{ conversations: Conversation[] } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refetch = () => {
-    if (!userId || !enabled) return;
-    fetch(`/api/messages/conversations/${userId}`)
-      .then(r => r.json()).then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+  const refetch = async () => {
+    if (!userId || !enabled) {
+      console.log("[useConversations] Skipping fetch - userId:", userId, "enabled:", enabled);
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      console.log("[useConversations] Checking token...");
+      const token = localStorage.getItem("ghar_khoj_jwt");
+      console.log("[useConversations] Token exists:", !!token);
+      
+      setLoading(true);
+      console.log("[useConversations] Calling customFetch for userId:", userId);
+      const result = await customFetch<{ conversations: Conversation[] }>(
+        `/api/messages/conversations/${userId}`
+      );
+      console.log("[useConversations] Success! Got", result?.conversations?.length, "conversations");
+      setData(result);
+    } catch (err: any) {
+      console.error("[useConversations] Error:", err?.message || err);
+      console.error("[useConversations] Full error:", err);
+      setData({ conversations: [] });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { refetch(); }, [userId, enabled]);
-  useEffect(() => {
-    if (!enabled || !userId) return;
-    const iv = setInterval(refetch, 5000);
-    return () => clearInterval(iv);
+  useEffect(() => { 
+    console.log("[useConversations useEffect] Triggering refetch");
+    refetch(); 
   }, [userId, enabled]);
 
   return { data, loading, refetch };
@@ -76,7 +116,7 @@ export default function Messages() {
   const { data: threadData, refetch: refetchThread } = useGetMessages(
     userId, activeConvId || 0,
     { query: { queryKey: getGetMessagesQueryKey(userId, activeConvId || 0), enabled: !!activeConvId && !!userId && isRealUser, refetchInterval: 3000 } }
-  );
+  ) as { data: MessageListResponseWithPartner | undefined; refetch: any };
 
   const sendMutation = useSendMessage({
     mutation: {
@@ -132,7 +172,7 @@ export default function Messages() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const activePartner = convs.data?.conversations?.find(c => c.partnerId === activeConvId)?.partner;
+  const activePartner = convs.data?.conversations?.find(c => c.partnerId === activeConvId)?.partner || threadData?.partner;
   const partnerName = activePartner ? `${activePartner.firstName} ${activePartner.lastName || ""}`.trim() : `User #${activeConvId}`;
   const partnerInitial = partnerName[0] || "?";
 
@@ -266,8 +306,18 @@ export default function Messages() {
                   <Circle size={8} className="fill-green-500" /> Verified user
                 </p>
               </div>
-              <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/40 px-3 py-1.5 rounded-full">
-                <Building size={12} /> Room inquiry
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/40 px-3 py-1.5 rounded-full">
+                  <Building size={12} /> Room inquiry
+                </div>
+                {activeConvId && (
+                  <ContractDialog
+                    tenantId={user?.role === "tenant" ? user.id : activeConvId}
+                    ownerId={user?.role === "owner" ? user.id : activeConvId}
+                    tenantName={user?.role === "tenant" ? `${user.firstName} ${user.lastName || ""}`.trim() : partnerName}
+                    ownerName={user?.role === "owner" ? `${user.firstName} ${user.lastName || ""}`.trim() : partnerName}
+                  />
+                )}
               </div>
             </div>
 

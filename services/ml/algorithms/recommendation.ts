@@ -212,6 +212,7 @@ export function buildRecommendationResults(options: {
     users,
     interactions,
     tenantPref,
+    filters,
     latitude,
     longitude,
     userId,

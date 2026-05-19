@@ -14,7 +14,7 @@
     "@types/bcryptjs": "^3.0.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
-"bcryptjs": "^3.0.3",
+    "bcryptjs": "^3.0.3",
     "jsonwebtoken": "^9.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2",

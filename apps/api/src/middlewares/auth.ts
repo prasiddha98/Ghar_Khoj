@@ -97,7 +97,8 @@ export function requireSelfParam(paramName: string) {
       return;
     }
 
-    if (id !== req.user.id) {
+    // allow admins to access other users' data
+    if (id !== req.user.id && req.user.role !== "admin") {
       res.status(403).json({ error: "forbidden", message: "Cannot access other user's data" });
       return;
     }

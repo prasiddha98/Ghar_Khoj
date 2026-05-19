@@ -1,14 +1,39 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { roomsTable, insertRoomSchema } from "@workspace/db";
-import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
+import { roomsTable, insertRoomSchema, contractsTable } from "@workspace/db";
+import { eq, and, gte, lte, sql, desc, or, inArray } from "drizzle-orm";
 import { authRequired, requireSelfParam, type AuthedRequest } from "../middlewares/auth";
 
 
 const router: IRouter = Router();
 
+async function refreshRoomAvailability() {
+  const today = new Date().toISOString().split("T")[0];
+  const activeContracts = await db.select({ roomId: contractsTable.roomId })
+    .from(contractsTable)
+    .where(and(
+      or(
+        eq(contractsTable.status, "draft"),
+        eq(contractsTable.status, "owner_signed"),
+        eq(contractsTable.status, "tenant_signed"),
+        eq(contractsTable.status, "fully_signed"),
+        eq(contractsTable.status, "verified")
+      ),
+      gte(contractsTable.endDate, today)
+    ));
+
+  const activeRoomIds = activeContracts.map((c) => c.roomId);
+
+  if (activeRoomIds.length > 0) {
+    // Only mark rooms with an active contract as unavailable.
+    // Do not override manual rented/available state for rooms without active contracts.
+    await db.update(roomsTable).set({ isAvailable: false }).where(inArray(roomsTable.id, activeRoomIds));
+  }
+}
+
 router.get("/rooms", async (req, res) => {
   try {
+    await refreshRoomAvailability();
     const { city, minPrice, maxPrice, roomType, tenantType, parking, isVerified, limit = "20", offset = "0" } = req.query;
 
 
@@ -29,7 +54,10 @@ router.get("/rooms", async (req, res) => {
       ? await query.where(and(...conditions)).limit(parseInt(limit as string)).offset(parseInt(offset as string))
       : await query.limit(parseInt(limit as string)).offset(parseInt(offset as string));
 
-    const countResult = await db.select({ count: sql<number>`count(*)` }).from(roomsTable);
+    const countQuery = conditions.length > 0
+      ? db.select({ count: sql<number>`count(*)` }).from(roomsTable).where(and(...conditions))
+      : db.select({ count: sql<number>`count(*)` }).from(roomsTable);
+    const countResult = await countQuery;
     const total = Number(countResult[0].count);
 
     res.json({ rooms, total });
@@ -41,6 +69,7 @@ router.get("/rooms", async (req, res) => {
 
 router.get("/rooms/:id", async (req, res) => {
   try {
+    await refreshRoomAvailability();
     const id = parseInt(req.params.id);
     const [room] = await db.select().from(roomsTable).where(eq(roomsTable.id, id));
     if (!room) {
@@ -64,11 +93,51 @@ router.post("/rooms", authRequired, async (req: AuthedRequest, res) => {
   }
 });
 
+async function roomHasActiveContract(roomId: number) {
+  const today = new Date().toISOString().split("T")[0];
+  const [count] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(contractsTable)
+    .where(and(
+      eq(contractsTable.roomId, roomId),
+      or(
+        eq(contractsTable.status, "draft"),
+        eq(contractsTable.status, "owner_signed"),
+        eq(contractsTable.status, "tenant_signed"),
+        eq(contractsTable.status, "fully_signed"),
+        eq(contractsTable.status, "verified")
+      ),
+      gte(contractsTable.endDate, today)
+    ));
+  return Number(count.count) > 0;
+}
+
 router.get("/rooms/owner/:ownerId", authRequired, requireSelfParam("ownerId"), async (req: AuthedRequest, res) => {
   try {
+    await refreshRoomAvailability();
     const ownerId = parseInt(req.params.ownerId);
     const rooms = await db.select().from(roomsTable).where(eq(roomsTable.ownerId, ownerId));
-    res.json({ rooms, total: rooms.length });
+    const roomIds = rooms.map((room) => room.id);
+    const activeContracts = roomIds.length > 0
+      ? await db.select({ roomId: contractsTable.roomId }).from(contractsTable)
+        .where(and(
+          inArray(contractsTable.roomId, roomIds),
+          or(
+            eq(contractsTable.status, "draft"),
+            eq(contractsTable.status, "owner_signed"),
+            eq(contractsTable.status, "tenant_signed"),
+            eq(contractsTable.status, "fully_signed"),
+            eq(contractsTable.status, "verified")
+          ),
+          gte(contractsTable.endDate, new Date().toISOString().split("T")[0])
+        ))
+      : [];
+    const activeRoomSet = new Set(activeContracts.map((c) => c.roomId));
+    const enrichedRooms = rooms.map((room) => ({
+      ...room,
+      hasActiveContract: activeRoomSet.has(room.id),
+    }));
+    res.json({ rooms: enrichedRooms, total: enrichedRooms.length });
   } catch (err) {
     req.log.error({ err }, "Error fetching owner rooms");
     res.status(500).json({ error: "internal_error", message: "Failed to fetch rooms" });
@@ -91,6 +160,17 @@ router.patch("/rooms/:id", authRequired, async (req: AuthedRequest, res) => {
 
     if (!req.user || existingRoom.ownerId !== req.user.id) {
       return res.status(403).json({ error: "forbidden", message: "Cannot update other user's room" });
+    }
+
+    if (req.body.isAvailable !== undefined) {
+      const newAvailability = req.body.isAvailable === true || req.body.isAvailable === "true";
+      if (newAvailability && await roomHasActiveContract(id)) {
+        return res.status(409).json({
+          error: "conflict",
+          message: "Cannot mark this room available while an active rental contract exists.",
+        });
+      }
+      update.isAvailable = newAvailability;
     }
 
     const [room] = await db.update(roomsTable).set(update).where(eq(roomsTable.id, id)).returning();

@@ -68,9 +68,13 @@ export default function RoomDetail() {
     }
     setSendingInterest(true);
     try {
+      const token = localStorage.getItem("ghar_khoj_jwt");
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = `Bearer ${token}`;
+
       const res = await fetch("/api/matches", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ tenantId: userId, ownerId: room.ownerId, roomId: room.id }),
       });
       if (!res.ok) throw new Error();
@@ -232,7 +236,7 @@ export default function RoomDetail() {
               )}
               {!room.isAvailable && (
                 <span className="bg-red-50 text-red-600 border border-red-200 px-3 py-1 rounded-lg text-sm font-semibold">
-                  Not Available
+                  Rented
                 </span>
               )}
             </div>

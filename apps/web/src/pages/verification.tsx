@@ -97,12 +97,12 @@ export default function Verification() {
 
       if (docFile) {
         const result = await uploadFile(docFile);
-        docUrl = result.url;
-        docPhotoUrl = result.url;
+        docUrl = result.objectPath;
+        docPhotoUrl = result.objectPath;
       }
       if (selfieFile) {
         const result = await uploadFile(selfieFile);
-        selfieUrl = result.url;
+        selfieUrl = result.objectPath;
       }
 
       const headers: Record<string, string> = { "Content-Type": "application/json" };

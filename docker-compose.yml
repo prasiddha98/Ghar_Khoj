@@ -15,6 +15,7 @@ services:
       - PRIVATE_OBJECT_DIR=ghar-khoj-private
       - PUBLIC_OBJECT_SEARCH_PATHS=ghar-khoj-public
       - USE_LOCAL_STORAGE=true
+      - LOCAL_STORAGE_DIR=/repo/local-storage
     restart: unless-stopped
     depends_on:
       - db

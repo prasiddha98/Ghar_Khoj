@@ -148,17 +148,19 @@ export function Layout({ children }: LayoutProps) {
                         </button>
                       </Link>
                       {!isAdmin && (
-                        <Link href="/matches" onClick={() => setShowUserMenu(false)}>
-                          <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-muted transition-colors text-left">
-                            <Heart size={15} className="text-muted-foreground" /> {isOwner ? "Interested Tenants" : "My Matches"}
-                          </button>
-                        </Link>
+                        <>
+                          <Link href="/matches" onClick={() => setShowUserMenu(false)}>
+                            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-muted transition-colors text-left">
+                              <Heart size={15} className="text-muted-foreground" /> {isOwner ? "Interested Tenants" : "My Matches"}
+                            </button>
+                          </Link>
+                          <Link href="/contracts" onClick={() => setShowUserMenu(false)}>
+                            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-muted transition-colors text-left">
+                              <FileText size={15} className="text-muted-foreground" /> Contracts
+                            </button>
+                          </Link>
+                        </>
                       )}
-                      <Link href="/contracts" onClick={() => setShowUserMenu(false)}>
-                        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm hover:bg-muted transition-colors text-left">
-                          <FileText size={15} className="text-muted-foreground" /> Contracts
-                        </button>
-                      </Link>
                     </div>
                     <div className="p-2 border-t">
                       <button

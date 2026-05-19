@@ -28,9 +28,18 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Login failed");
 
+      console.log("=== Login Response ===");
+      console.log("data:", data);
+      console.log("data.token:", data.token ? "EXISTS" : "NOT FOUND");
+      console.log("data.id:", data.id);
+
       // Store JWT for API calls
       if (data.token) {
+        console.log("Storing JWT to localStorage...");
         localStorage.setItem("ghar_khoj_jwt", String(data.token));
+        console.log("Verify localStorage.getItem('ghar_khoj_jwt'):", localStorage.getItem("ghar_khoj_jwt") ? "SUCCESS" : "FAILED");
+      } else {
+        console.warn("NO TOKEN in response!");
       }
 
       localStorage.setItem("ghar_khoj_real_user_id", String(data.id));

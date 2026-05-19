@@ -3,6 +3,10 @@ packages:
   - packages/shared/*
   - scripts
 
+allowBuilds:
+  core-js: set this to true or false
+  esbuild: false
+
 autoInstallPeers: false
 
 catalog:
