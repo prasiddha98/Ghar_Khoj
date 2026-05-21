@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { customFetchRaw, getApiUrl } from "@/lib/customFetch";
+import { getApiUrl } from "@/lib/customFetch";
 
 interface UploadResult {
   objectPath: string;
@@ -12,49 +12,34 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : undefined;
 }
 
-async function requestUploadUrl(name: string, contentType: string, size: number) {
+export async function uploadFile(file: File): Promise<UploadResult> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    "Content-Type": file.type || "application/octet-stream",
+    "X-File-Name": file.name,
     ...(getAuthHeader() ?? {}),
   };
 
-  const res = await customFetchRaw("/api/storage/uploads/request-url", {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ name, contentType, size }),
-  });
-  if (!res.ok) {
-    if (res.status === 401) {
-      throw new Error("Unauthorized. Please sign in again.");
-    }
-    throw new Error("Failed to get upload URL");
-  }
-  return res.json() as Promise<{ uploadURL: string; objectPath: string }>;
-}
-
-export async function uploadFile(file: File): Promise<UploadResult> {
-  const { uploadURL, objectPath } = await requestUploadUrl(file.name, file.type, file.size);
-  const headers: Record<string, string> = { "Content-Type": file.type };
-  const authHeader = getAuthHeader();
-  if (authHeader) {
-    Object.assign(headers, authHeader);
-  }
-
-  const putRes = await fetch(uploadURL, {
+  const uploadUrl = getApiUrl("/api/storage/uploads");
+  const uploadRes = await fetch(uploadUrl, {
     method: "PUT",
     headers,
     body: file,
   });
-  if (!putRes.ok) {
-    if (putRes.status === 401) {
+
+  if (!uploadRes.ok) {
+    if (uploadRes.status === 401) {
       throw new Error("Upload unauthorized. Please sign in again.");
     }
-    const text = await putRes.text();
-    throw new Error(`Upload failed: ${putRes.status} ${text}`);
+    const text = await uploadRes.text();
+    throw new Error(`Upload failed: ${uploadRes.status} ${text}`);
   }
-  const objectSegment = objectPath.replace(/^\/objects\//, "");
-  const url = getApiUrl(`/api/storage/objects/${objectSegment}`);
-  return { objectPath, url };
+
+  const data = (await uploadRes.json()) as { objectPath: string };
+  if (!data?.objectPath) {
+    throw new Error("Upload response did not include objectPath");
+  }
+
+  return { objectPath: data.objectPath, url: data.objectPath };
 }
 
 export function useFileUpload() {
@@ -90,7 +75,7 @@ export function useMultiUpload() {
       for (const file of files) {
         const result = await uploadFile(file);
         results.push(result);
-        setUploadedCount(c => c + 1);
+        setUploadedCount((c) => c + 1);
       }
       return results;
     } finally {

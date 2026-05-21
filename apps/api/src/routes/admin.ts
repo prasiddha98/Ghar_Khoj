@@ -36,12 +36,7 @@ router.get("/admin/stats", authRequired, requireRole(["admin"]), async (req: Aut
 });
 
 function normalizeVerificationMediaUrl(rawUrl: string | null) {
-  if (!rawUrl) return null;
-  try {
-    return objectStorageService.normalizeObjectEntityPath(rawUrl);
-  } catch {
-    return rawUrl;
-  }
+  return rawUrl;
 }
 
 router.get("/admin/verifications", authRequired, requireRole(["admin"]), async (req: AuthedRequest, res) => {

@@ -1,43 +1,6 @@
-import { Storage, File } from "@google-cloud/storage";
-import { Readable } from "stream";
-import { randomUUID } from "crypto";
-import {
-  ObjectAclPolicy,
-  ObjectPermission,
-  canAccessObject,
-  getObjectAclPolicy,
-  setObjectAclPolicy,
-} from "./objectAcl";
-import fs from "fs";
 import path from "path";
-
-const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
-const USE_LOCAL_STORAGE = process.env.USE_LOCAL_STORAGE === 'true';
-export const LOCAL_STORAGE_DIR = process.env.LOCAL_STORAGE_DIR || path.join(process.cwd(), 'local-storage');
-
-if (USE_LOCAL_STORAGE) {
-  if (!fs.existsSync(LOCAL_STORAGE_DIR)) {
-    fs.mkdirSync(LOCAL_STORAGE_DIR, { recursive: true });
-  }
-}
-
-export const objectStorageClient = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: {
-        type: "json",
-        subject_token_field_name: "access_token",
-      },
-    },
-    universe_domain: "googleapis.com",
-  },
-  projectId: "",
-});
+import { randomUUID } from "crypto";
+import cloudinary from "./cloudinary";
 
 export class ObjectNotFoundError extends Error {
   constructor() {
@@ -50,302 +13,66 @@ export class ObjectNotFoundError extends Error {
 export class ObjectStorageService {
   constructor() {}
 
-  getPublicObjectSearchPaths(): Array<string> {
-    const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
-    const paths = Array.from(
-      new Set(
-        pathsStr
-          .split(",")
-          .map((path) => path.trim())
-          .filter((path) => path.length > 0)
-      )
-    );
-    if (paths.length === 0) {
-      throw new Error(
-        "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a bucket in 'Object Storage' " +
-          "tool and set PUBLIC_OBJECT_SEARCH_PATHS env var (comma-separated paths)."
-      );
+  getResourceTypeFromMime(mimeType: string): "image" | "video" | "raw" | "auto" {
+    const normalized = (mimeType || "").toLowerCase();
+    if (normalized.startsWith("image/")) return "image";
+    if (normalized.startsWith("video/")) return "video";
+    if (
+      normalized === "application/pdf" ||
+      normalized === "application/msword" ||
+      normalized === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      normalized === "application/zip" ||
+      normalized === "application/octet-stream"
+    ) {
+      return "raw";
     }
-    return paths;
+    return "auto";
   }
 
-  getPrivateObjectDir(): string {
-    const dir = process.env.PRIVATE_OBJECT_DIR || "";
-    if (!dir) {
-      throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
-      );
-    }
-    return dir;
+  getPublicId(filename: string): string {
+    const baseName = path.basename(filename, path.extname(filename)).replace(/[^a-zA-Z0-9_-]/g, "_");
+    return `${baseName}-${randomUUID().slice(0, 8)}`;
   }
 
-  async searchPublicObject(filePath: string): Promise<File | null> {
-    for (const searchPath of this.getPublicObjectSearchPaths()) {
-      const fullPath = `${searchPath}/${filePath}`;
-
-      const { bucketName, objectName } = parseObjectPath(fullPath);
-      const bucket = objectStorageClient.bucket(bucketName);
-      const file = bucket.file(objectName);
-
-      const [exists] = await file.exists();
-      if (exists) {
-        return file;
-      }
-    }
-
-    return null;
-  }
-
-  async downloadObject(file: File, cacheTtlSec: number = 3600): Promise<Response> {
-    const [metadata] = await file.getMetadata();
-    const aclPolicy = await getObjectAclPolicy(file);
-    const isPublic = aclPolicy?.visibility === "public";
-
-    const nodeStream = file.createReadStream();
-    const webStream = Readable.toWeb(nodeStream) as ReadableStream;
-
-    const headers: Record<string, string> = {
-      "Content-Type": (metadata.contentType as string) || "application/octet-stream",
-      "Cache-Control": `${isPublic ? "public" : "private"}, max-age=${cacheTtlSec}`,
+  async uploadBuffer(
+    buffer: Buffer,
+    filename: string,
+    folder: string,
+    resourceType: "image" | "video" | "raw" | "auto" = "auto"
+  ): Promise<string> {
+    const public_id = this.getPublicId(filename);
+    const uploadOptions = {
+      folder,
+      resource_type: resourceType,
+      public_id,
+      use_filename: true,
+      unique_filename: true,
+      overwrite: false,
     };
-    if (metadata.size) {
-      headers["Content-Length"] = String(metadata.size);
-    }
 
-    return new Response(webStream, { headers });
-  }
+    return new Promise<string>((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        if (!result || !result.secure_url) {
+          reject(new Error("Cloudinary upload did not return a secure URL"));
+          return;
+        }
+        resolve(result.secure_url);
+      });
 
-  async getObjectEntityUploadURL(): Promise<string> {
-    if (USE_LOCAL_STORAGE) {
-      const objectId = randomUUID();
-      return `http://localhost:3000/api/storage/local-upload/${objectId}`;
-    }
-
-    const privateObjectDir = this.getPrivateObjectDir();
-    if (!privateObjectDir) {
-      throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
-      );
-    }
-
-    const objectId = randomUUID();
-    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
-
-    const { bucketName, objectName } = parseObjectPath(fullPath);
-
-    return signObjectURL({
-      bucketName,
-      objectName,
-      method: "PUT",
-      ttlSec: 900,
+      uploadStream.on("error", reject);
+      uploadStream.end(buffer);
     });
-  }
-
-  async getObjectEntityFile(objectPath: string): Promise<File> {
-    if (USE_LOCAL_STORAGE) {      if (objectPath.startsWith("/api/storage/objects/")) {
-        objectPath = objectPath.replace("/api/storage/objects/", "/objects/");
-      }      if (!objectPath.startsWith("/objects/local/")) {
-        throw new ObjectNotFoundError();
-      }
-      const objectId = objectPath.slice("/objects/local/".length);
-      const filePath = path.join(LOCAL_STORAGE_DIR, objectId);
-      if (!fs.existsSync(filePath)) {
-        throw new ObjectNotFoundError();
-      }
-      // For local object file usage, this method is not used for direct local download.
-      throw new Error("Local storage getObjectEntityFile not implemented");
-    }
-
-    if (!objectPath.startsWith("/objects/")) {
-      throw new ObjectNotFoundError();
-    }
-
-    const parts = objectPath.slice(1).split("/");
-    if (parts.length < 2) {
-      throw new ObjectNotFoundError();
-    }
-
-    const entityId = parts.slice(1).join("/");
-    let entityDir = this.getPrivateObjectDir();
-    if (!entityDir.endsWith("/")) {
-      entityDir = `${entityDir}/`;
-    }
-    const objectEntityPath = `${entityDir}${entityId}`;
-    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
-    const bucket = objectStorageClient.bucket(bucketName);
-    const objectFile = bucket.file(objectName);
-    const [exists] = await objectFile.exists();
-    if (!exists) {
-      throw new ObjectNotFoundError();
-    }
-    return objectFile;
-  }
-
-  async getObject(objectPath: string): Promise<Buffer> {
-    const normalizedPath = this.normalizeObjectEntityPath(objectPath);
-
-    if (USE_LOCAL_STORAGE) {
-      if (!normalizedPath.startsWith("/objects/local/")) {
-        throw new ObjectNotFoundError();
-      }
-      const objectId = normalizedPath.slice("/objects/local/".length);
-      const filePath = path.join(LOCAL_STORAGE_DIR, objectId);
-      if (!fs.existsSync(filePath)) {
-        throw new ObjectNotFoundError();
-      }
-      return fs.readFileSync(filePath);
-    }
-
-    if (!normalizedPath.startsWith("/objects/")) {
-      throw new ObjectNotFoundError();
-    }
-
-    const parts = normalizedPath.slice(1).split("/");
-    if (parts.length < 2) {
-      throw new ObjectNotFoundError();
-    }
-
-    const entityId = parts.slice(1).join("/");
-    let entityDir = this.getPrivateObjectDir();
-    if (!entityDir.endsWith("/")) {
-      entityDir = `${entityDir}/`;
-    }
-    const objectEntityPath = `${entityDir}${entityId}`;
-    const { bucketName, objectName } = parseObjectPath(objectEntityPath);
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectName);
-    const [exists] = await file.exists();
-    if (!exists) {
-      throw new ObjectNotFoundError();
-    }
-    const [buffer] = await file.download();
-    return buffer;
   }
 
   normalizeObjectEntityPath(rawPath: string): string {
-    if (USE_LOCAL_STORAGE) {
-      if (rawPath.startsWith("/api/storage/objects/")) {
-        return rawPath.replace("/api/storage/objects/", "/objects/");
-      }
-      if (rawPath.startsWith("/storage/objects/")) {
-        return rawPath.replace("/storage/objects/", "/objects/");
-      }
-      const match = rawPath.match(/\/api\/storage\/local-upload\/(.+)/);
-      if (match) {
-        return `/objects/local/${match[1]}`;
-      }
+    if (!rawPath) return rawPath;
+    if (rawPath.startsWith("http://") || rawPath.startsWith("https://")) {
       return rawPath;
     }
-
-    if (!rawPath.startsWith("https://storage.googleapis.com/")) {
-      return rawPath;
-    }
-
-    const url = new URL(rawPath);
-    const rawObjectPath = url.pathname;
-
-    let objectEntityDir = this.getPrivateObjectDir();
-    if (!objectEntityDir.endsWith("/")) {
-      objectEntityDir = `${objectEntityDir}/`;
-    }
-
-    if (!rawObjectPath.startsWith(objectEntityDir)) {
-      return rawObjectPath;
-    }
-
-    const entityId = rawObjectPath.slice(objectEntityDir.length);
-    return `/objects/${entityId}`;
+    return rawPath;
   }
-
-  async trySetObjectEntityAclPolicy(
-    rawPath: string,
-    aclPolicy: ObjectAclPolicy
-  ): Promise<string> {
-    const normalizedPath = this.normalizeObjectEntityPath(rawPath);
-    if (!normalizedPath.startsWith("/")) {
-      return normalizedPath;
-    }
-
-    const objectFile = await this.getObjectEntityFile(normalizedPath);
-    await setObjectAclPolicy(objectFile, aclPolicy);
-    return normalizedPath;
-  }
-
-  async canAccessObjectEntity({
-    userId,
-    objectFile,
-    requestedPermission,
-  }: {
-    userId?: string;
-    objectFile: File;
-    requestedPermission?: ObjectPermission;
-  }): Promise<boolean> {
-    return canAccessObject({
-      userId,
-      objectFile,
-      requestedPermission: requestedPermission ?? ObjectPermission.READ,
-    });
-  }
-}
-
-function parseObjectPath(path: string): {
-  bucketName: string;
-  objectName: string;
-} {
-  if (!path.startsWith("/")) {
-    path = `/${path}`;
-  }
-  const pathParts = path.split("/");
-  if (pathParts.length < 3) {
-    throw new Error("Invalid path: must contain at least a bucket name");
-  }
-
-  const bucketName = pathParts[1];
-  const objectName = pathParts.slice(2).join("/");
-
-  return {
-    bucketName,
-    objectName,
-  };
-}
-
-async function signObjectURL({
-  bucketName,
-  objectName,
-  method,
-  ttlSec,
-}: {
-  bucketName: string;
-  objectName: string;
-  method: "GET" | "PUT" | "DELETE" | "HEAD";
-  ttlSec: number;
-}): Promise<string> {
-  const request = {
-    bucket_name: bucketName,
-    object_name: objectName,
-    method,
-    expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
-  };
-  const response = await fetch(
-    `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(request),
-      signal: AbortSignal.timeout(30_000),
-    }
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to sign object URL, errorcode: ${response.status}, ` +
-        `make sure you're running on Replit`
-    );
-  }
-
-  const { signed_url: signedURL } = await response.json();
-  return signedURL;
 }

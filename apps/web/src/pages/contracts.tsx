@@ -15,6 +15,7 @@ import { format } from "date-fns";
 import { BackButton } from "@/components/back-button";
 import { ContractViewer } from "@/components/contract-viewer";
 import { customFetch } from "@workspace/api-client-react";
+import { getApiUrl } from "@/lib/customFetch";
 import { SignaturePad } from "@/components/signature-pad";
 import { generateContractPDF } from "@/lib/pdf-generator";
 
@@ -171,15 +172,24 @@ function SignModal({ contract, role, onClose, onSigned }: {
             method: "POST",
           });
           if (!uploadUrlRes?.uploadUrl) throw new Error("Failed to get upload URL");
-          const uploadRes = await fetch(uploadUrlRes.uploadUrl, {
+          const uploadHeaders: Record<string, string> = { "Content-Type": "application/pdf" };
+          const authToken = localStorage.getItem("ghar_khoj_jwt");
+          if (authToken) {
+            uploadHeaders.Authorization = `Bearer ${authToken}`;
+          }
+
+          const uploadEndpoint = uploadUrlRes.uploadUrl.startsWith("http")
+            ? uploadUrlRes.uploadUrl
+            : getApiUrl(uploadUrlRes.uploadUrl);
+          const uploadRes = await fetch(uploadEndpoint, {
             method: "PUT",
-            headers: { "Content-Type": "application/pdf" },
+            headers: uploadHeaders,
             body: pdfBlob,
           });
           if (!uploadRes.ok) throw new Error("Failed to upload PDF");
-          const objectPath = uploadUrlRes.uploadUrl.includes("/api/storage/local-upload/")
-            ? `/objects/local/${uploadUrlRes.uploadUrl.split("/").pop()}`
-            : uploadUrlRes.uploadUrl;
+          const uploadData = await uploadRes.json();
+          const objectPath = uploadData?.objectPath;
+          if (!objectPath) throw new Error("Upload response did not include objectPath");
           await customFetch(`/api/contracts/${contract.id}/pdf-store-url`, {
             method: "POST",
             body: JSON.stringify({ objectPath }),

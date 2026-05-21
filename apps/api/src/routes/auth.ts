@@ -19,7 +19,8 @@ router.post("/auth/register", async (req, res) => {
       return res.status(400).json({ error: "validation_error", message: "Password must be at least 6 characters" });
     }
 
-    const safeRole = role === "owner" ? "owner" : "tenant";
+    const allowedRoles = ["owner", "tenant", "admin"];
+    const safeRole = allowedRoles.includes(role) ? role : "tenant";
 
     const existing = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim()));
     if (existing.length > 0) {

@@ -431,13 +431,8 @@ router.post("/contracts/:contractId/pdf-upload-url", authRequired, async (req: A
       return res.status(403).json({ error: "forbidden", message: "Not authorized to access this contract" });
     }
     
-    // Generate upload URL for the PDF
-    const { ObjectStorageService } = await import("../lib/objectStorage");
-    const storage = new ObjectStorageService();
-    const uploadUrl = await storage.getObjectEntityUploadURL();
-    
-    // Return the upload URL to the frontend
-    return res.json({ uploadUrl });
+    // Generate upload URL for the PDF upload endpoint.
+    return res.json({ uploadUrl: "/api/storage/uploads?folder=contracts" });
   } catch (err) {
     req.log.error({ err }, "Error generating PDF upload URL");
     return res.status(500).json({ error: "internal_error", message: "Failed to generate upload URL" });
@@ -465,9 +460,7 @@ router.post("/contracts/:contractId/pdf-store-url", authRequired, async (req: Au
     }
     
     // Update the contract with the PDF URL
-    const { ObjectStorageService } = await import("../lib/objectStorage");
-    const storage = new ObjectStorageService();
-    const normalizedObjectPath = storage.normalizeObjectEntityPath(objectPath);
+    const normalizedObjectPath = objectPath;
 
     const [updated] = await db.update(contractsTable)
       .set({ contractPdfUrl: normalizedObjectPath })
