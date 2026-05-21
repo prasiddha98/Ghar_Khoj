@@ -11,7 +11,7 @@ services:
     plan: starter
     envVars:
     - key: DATABASE_URL
-        fromDatabase:
+      fromDatabase:
           name: rental-db
           property: connectionString
       - key: JWT_SECRET
