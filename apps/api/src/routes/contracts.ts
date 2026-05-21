@@ -4,6 +4,11 @@ import { contractsTable, usersTable, roomsTable, matchesTable } from "@workspace
 import { eq, or, desc } from "drizzle-orm";
 import { authRequired, requireSelfParam, type AuthedRequest } from "../middlewares/auth";
 
+const KHALTI_SECRET_KEY = process.env.KHALTI_SECRET_KEY || "";
+const KHALTI_ENV = (process.env.KHALTI_ENV || "development").toLowerCase();
+const KHALTI_WEB_BASE_URL = process.env.KHALTI_WEB_BASE_URL || "http://localhost:5173";
+const KHALTI_API_BASE_URL = KHALTI_ENV === "production" ? "https://khalti.com/api/v2" : "https://dev.khalti.com/api/v2";
+const KHALTI_PAYMENT_AMOUNT = 100;
 
 const router: IRouter = Router();
 
@@ -26,13 +31,23 @@ router.post("/contracts", authRequired, async (req: AuthedRequest, res) => {
     const [existing] = await db.select().from(contractsTable).where(eq(contractsTable.matchId, matchId));
     if (existing) return res.json(existing);
 
-    // Ensure the contract rent matches the room price from the match
+    // Ensure only the owner can create a contract for this match
+    if (req.user!.id !== ownerId) {
+      return res.status(403).json({ error: "forbidden", message: "Only the room owner can create this contract" });
+    }
+
     const [match] = await db.select().from(matchesTable).where(eq(matchesTable.id, matchId));
     if (!match) {
       return res.status(404).json({ error: "not_found", message: "Match not found" });
     }
+    if (match.ownerId !== ownerId || match.tenantId !== tenantId) {
+      return res.status(400).json({ error: "validation_error", message: "Match participants do not match provided owner and tenant" });
+    }
     if (match.roomId !== roomId) {
       return res.status(400).json({ error: "validation_error", message: "Room does not match the selected match" });
+    }
+    if (match.status !== "accepted") {
+      return res.status(400).json({ error: "validation_error", message: "Contract creation is only allowed after the match is accepted" });
     }
 
     const [room] = await db.select().from(roomsTable).where(eq(roomsTable.id, roomId));
@@ -50,10 +65,11 @@ router.post("/contracts", authRequired, async (req: AuthedRequest, res) => {
         ownerId, 
         roomId, 
         rentAmount: rentAmountToUse, 
+        tenantPaymentStatus: "pending",
         startDate, 
         endDate, 
         terms, 
-        status: "draft" 
+        status: "pending_payment" 
       })
       .returning();
 
@@ -151,6 +167,17 @@ router.patch("/contracts/:id/sign", authRequired, async (req: AuthedRequest, res
     const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.id, id));
     if (!contract) return res.status(404).json({ error: "not_found", message: "Contract not found" });
 
+    if (role === "owner" && contract.ownerId !== req.user!.id) {
+      return res.status(403).json({ error: "forbidden", message: "Only the contract owner can sign as owner" });
+    }
+    if (role === "tenant" && contract.tenantId !== req.user!.id) {
+      return res.status(403).json({ error: "forbidden", message: "Only the tenant can sign as tenant" });
+    }
+
+    if (role === "tenant" && contract.tenantPaymentStatus !== "paid") {
+      return res.status(402).json({ error: "payment_required", message: "Tenant must pay NPR 100 via Khalti before signing" });
+    }
+
     const now = new Date();
     const update = role === "owner"
       ? { ownerSignature: signature, ownerSignedAt: now }
@@ -176,6 +203,138 @@ router.patch("/contracts/:id/sign", authRequired, async (req: AuthedRequest, res
   } catch (err) {
     req.log.error({ err }, "Error signing contract");
     return res.status(500).json({ error: "internal_error", message: "Failed to sign contract" });
+  }
+});
+
+router.post("/contracts/:id/khalti/initiate", authRequired, async (req: AuthedRequest, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "unauthorized", message: "Missing auth" });
+    }
+
+    const id = parseInt(req.params.id);
+    const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.id, id));
+    if (!contract) return res.status(404).json({ error: "not_found", message: "Contract not found" });
+
+    if (contract.tenantId !== userId) {
+      return res.status(403).json({ error: "forbidden", message: "Only the tenant can initiate payment for this contract" });
+    }
+
+    const isAlreadyPaid = contract.tenantPaymentStatus === "paid" || ["signed", "fully_signed", "verified", "cancelled"].includes(contract.status);
+    if (isAlreadyPaid) {
+      return res.status(400).json({ error: "payment_exists", message: "Payment already completed or contract already finalized" });
+    }
+
+    if (!KHALTI_SECRET_KEY) {
+      return res.status(500).json({ error: "config_error", message: "Khalti secret key is not configured" });
+    }
+
+    const purchaseOrderId = `contract-${contract.id}`;
+    const payload = {
+      return_url: `${KHALTI_WEB_BASE_URL}/contracts/khalti-callback`,
+      website_url: KHALTI_WEB_BASE_URL,
+      amount: KHALTI_PAYMENT_AMOUNT * 100,
+      purchase_order_id: purchaseOrderId,
+      purchase_order_name: "Rental Contract Signing Fee",
+    };
+
+    const response = await fetch(`${KHALTI_API_BASE_URL}/epayment/initiate/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Key ${KHALTI_SECRET_KEY}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      return res.status(response.status).json({ error: "payment_init_failed", message: "Failed to initiate Khalti payment", details: errorBody });
+    }
+
+    const data = await response.json() as { payment_url: string; pidx: string; expires_at?: string };
+    const updatePayload: Record<string, unknown> = {
+      tenantPaymentReference: data.pidx,
+    };
+
+    if (contract.status === "draft" || contract.status === "pending_payment") {
+      updatePayload.status = "pending_payment";
+    }
+
+    await db.update(contractsTable)
+      .set(updatePayload)
+      .where(eq(contractsTable.id, id));
+
+    return res.json({ paymentUrl: data.payment_url, payment_url: data.payment_url, pidx: data.pidx });
+  } catch (err) {
+    req.log.error({ err }, "Error initiating Khalti payment");
+    return res.status(500).json({ error: "internal_error", message: "Failed to initiate Khalti payment" });
+  }
+});
+
+router.post("/contracts/:id/khalti/verify", authRequired, async (req: AuthedRequest, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: "Missing auth" });
+    }
+
+    const id = parseInt(req.params.id);
+    const { pidx } = req.body;
+
+    if (!pidx || typeof pidx !== "string") {
+      return res.status(400).json({ success: false, message: "pidx is required" });
+    }
+
+    const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.id, id));
+    if (!contract) return res.status(404).json({ success: false, message: "Contract not found" });
+
+    if (contract.tenantId !== userId) {
+      return res.status(403).json({ success: false, message: "Only the tenant can verify payment for this contract" });
+    }
+
+    if (contract.tenantPaymentReference && contract.tenantPaymentReference !== pidx) {
+      return res.status(400).json({ success: false, message: "Payment reference does not match the expected contract payment." });
+    }
+
+    if (!KHALTI_SECRET_KEY) {
+      return res.status(500).json({ success: false, message: "Khalti secret key is not configured" });
+    }
+
+    const response = await fetch(`${KHALTI_API_BASE_URL}/epayment/lookup/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Key ${KHALTI_SECRET_KEY}`,
+      },
+      body: JSON.stringify({ pidx }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      return res.status(response.status).json({ success: false, message: "Failed to lookup Khalti payment", details: errorBody });
+    }
+
+    const lookup = await response.json() as { status?: string; transaction_id?: string; pidx?: string; [key: string]: any };
+    if ((lookup.status || "").toLowerCase() !== "completed") {
+      return res.status(400).json({ success: false, message: "Payment not completed", status: lookup.status });
+    }
+
+    const updateData: Record<string, unknown> = {
+      tenantPaymentStatus: "paid",
+      tenantPaymentReference: pidx,
+      tenantPaymentVerifiedAt: new Date(),
+    };
+
+    await db.update(contractsTable)
+      .set(updateData)
+      .where(eq(contractsTable.id, id));
+
+    return res.json({ success: true, message: "Payment verified successfully" });
+  } catch (err) {
+    req.log.error({ err }, "Error verifying Khalti payment");
+    return res.status(500).json({ success: false, message: "Failed to verify Khalti payment" });
   }
 });
 
@@ -298,6 +457,8 @@ router.post("/contracts/:contractId/pdf-store-url", authRequired, async (req: Au
     }
     
     // Update the contract with the PDF URL
+    const { ObjectStorageService } = await import("../lib/objectStorage");
+    const storage = new ObjectStorageService();
     const normalizedObjectPath = storage.normalizeObjectEntityPath(objectPath);
 
     const [updated] = await db.update(contractsTable)

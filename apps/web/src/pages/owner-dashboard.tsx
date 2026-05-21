@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
+import { BackButton } from "@/components/back-button";
 import { motion } from "framer-motion";
 import {
   Building, PlusCircle, Eye, EyeOff, Trash2, CheckCircle2, MapPin,
@@ -110,7 +111,7 @@ export default function OwnerDashboard() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-
+      <BackButton fallback="/" label="Back" className="" />
       {/* Hero Banner */}
       <div className="bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-600 rounded-3xl p-8 text-white shadow-xl shadow-emerald-500/20">
         <div className="flex items-start justify-between gap-4 mb-6">

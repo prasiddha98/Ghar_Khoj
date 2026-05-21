@@ -79,9 +79,9 @@ export default function Profile() {
 
           <h1 className="text-2xl font-extrabold text-foreground">{user.firstName} {user.lastName}</h1>
           <div className="flex flex-col gap-1 mt-2">
-            <p className="text-muted-foreground text-sm flex items-center gap-2"><Mail size={13} /> {user.email}</p>
-            {user.phone && <p className="text-muted-foreground text-sm flex items-center gap-2"><Phone size={13} /> {user.phone}</p>}
-            {user.preferredCity && <p className="text-muted-foreground text-sm flex items-center gap-2"><MapPin size={13} /> Prefers {user.preferredCity}</p>}
+            <p className="text-foreground text-sm flex items-center gap-2"><Mail size={13} className="text-primary" /> <span className="font-medium">{user.email || "No email set"}</span></p>
+            {user.phone && <p className="text-foreground text-sm flex items-center gap-2"><Phone size={13} className="text-primary" /> <span className="font-medium">{user.phone}</span></p>}
+            {user.preferredCity && <p className="text-foreground text-sm flex items-center gap-2"><MapPin size={13} className="text-primary" /> <span className="font-medium">Prefers {user.preferredCity}</span></p>}
           </div>
           {user.bio && <p className="text-foreground text-sm mt-3 bg-muted/40 rounded-xl p-3 italic">"{user.bio}"</p>}
         </div>

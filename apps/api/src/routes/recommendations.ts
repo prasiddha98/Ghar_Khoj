@@ -61,6 +61,11 @@ router.post("/recommendations", authRequired, async (req: AuthedRequest, res) =>
       .from(tenantPreferencesTable)
       .where(eq(tenantPreferencesTable.userId, userId));
 
+    const [user] = await db
+      .select({ preferredCity: usersTable.preferredCity })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+
     const allRooms = await db.select().from(roomsTable);
 
     if (allRooms.length === 0) {
@@ -75,6 +80,7 @@ router.post("/recommendations", authRequired, async (req: AuthedRequest, res) =>
       users: allUsers,
       interactions: allInteractions,
       tenantPref,
+      userPreferredCity: user?.preferredCity || null,
       filters,
       latitude: lat,
       longitude: lon,

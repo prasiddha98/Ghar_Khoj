@@ -2,6 +2,7 @@ import { useState, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BackButton } from "@/components/back-button";
 import { ShieldCheck, AlertCircle, CheckCircle2, FileText, Upload, Camera, X, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
@@ -184,6 +185,9 @@ export default function Verification() {
 
   return (
     <div className="max-w-2xl mx-auto pb-16">
+      <div className="mb-8">
+        <BackButton fallback="/profile" label="Back" className="" />
+      </div>
       <div className="flex items-center gap-4 mb-8">
         <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
           <ShieldCheck className="text-green-600" size={24} />

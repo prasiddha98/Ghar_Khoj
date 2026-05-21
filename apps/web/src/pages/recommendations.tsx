@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
 import { useGetRecommendations } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { Sparkles, Compass } from "lucide-react";
+import { Sparkles, Compass, Lock } from "lucide-react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
 import { RoomCard } from "@/components/room-card";
 import { motion } from "framer-motion";
 import { BackButton } from "@/components/back-button";
 
 export default function Recommendations() {
-  const { userId } = useAuth();
+  const { userId, isVerified, user } = useAuth();
   
   // Simulated geolocation for nearby suggestions
   const mockLat = 27.7172; 
@@ -16,15 +18,59 @@ export default function Recommendations() {
   const getRecommendationsMutation = useGetRecommendations();
 
   useEffect(() => {
-    getRecommendationsMutation.mutate({
-      data: {
-        userId,
-        latitude: mockLat,
-        longitude: mockLng,
-        limit: 10
-      }
-    });
-  }, []);
+    if (isVerified && userId) {
+      getRecommendationsMutation.mutate({
+        data: {
+          userId,
+          latitude: mockLat,
+          longitude: mockLng,
+          limit: 10
+        }
+      });
+    }
+  }, [isVerified, userId]);
+
+  // Check if user is logged in
+  if (!user) {
+    return (
+      <div className="h-[70vh] flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
+        <BackButton fallback="/" label="Back" className="mb-6 text-left" />
+        <div className="w-24 h-24 bg-gradient-to-br from-muted to-muted/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
+          <Lock className="text-muted-foreground" size={40} />
+        </div>
+        <h2 className="text-2xl font-bold mb-3">Sign In Required</h2>
+        <p className="text-muted-foreground mb-8 leading-relaxed">
+          You must sign in to access AI-powered recommendations.
+        </p>
+        <Link href="/login">
+          <Button size="lg" className="w-full rounded-xl bg-primary shadow-lg shadow-primary/25">
+            Sign In to View Recommendations
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  // Check if user is verified
+  if (!isVerified) {
+    return (
+      <div className="h-[70vh] flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
+        <BackButton fallback="/" label="Back" className="mb-6 text-left" />
+        <div className="w-24 h-24 bg-gradient-to-br from-muted to-muted/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
+          <Lock className="text-muted-foreground" size={40} />
+        </div>
+        <h2 className="text-2xl font-bold mb-3">Verify Your Identity</h2>
+        <p className="text-muted-foreground mb-8 leading-relaxed">
+          AI-powered recommendations are only available to verified users. Verify your identity to get personalized room suggestions.
+        </p>
+        <Link href="/verification">
+          <Button size="lg" className="w-full rounded-xl bg-primary shadow-lg shadow-primary/25">
+            Verify Identity to Unlock Recommendations
+          </Button>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-10 min-h-screen">

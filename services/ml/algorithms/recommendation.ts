@@ -144,25 +144,28 @@ export function calculateCollaborativeScore(
 
 export function matchesTenantPreferences(
   room: Room,
-  tenantPref?: TenantPreference | null
+  tenantPref?: TenantPreference | null,
+  preferredCity?: string | null
 ): boolean {
-  if (!tenantPref) {
+  const effectiveCity = tenantPref?.city || preferredCity;
+
+  if (!tenantPref && !effectiveCity) {
     return true;
   }
 
-  if (tenantPref.city && room.city !== tenantPref.city) {
+  if (effectiveCity && room.city !== effectiveCity) {
     return false;
   }
-  if (tenantPref.roomType && room.roomType !== tenantPref.roomType) {
+  if (tenantPref?.roomType && room.roomType !== tenantPref.roomType) {
     return false;
   }
-  if (tenantPref.tenantType && room.tenantType !== tenantPref.tenantType) {
+  if (tenantPref?.tenantType && room.tenantType !== tenantPref.tenantType) {
     return false;
   }
-  if (tenantPref.minBudget !== null && tenantPref.minBudget !== undefined && room.price < tenantPref.minBudget) {
+  if (tenantPref?.minBudget !== null && tenantPref?.minBudget !== undefined && room.price < tenantPref.minBudget) {
     return false;
   }
-  if (tenantPref.maxBudget !== null && tenantPref.maxBudget !== undefined && room.price > tenantPref.maxBudget) {
+  if (tenantPref?.maxBudget !== null && tenantPref?.maxBudget !== undefined && room.price > tenantPref.maxBudget) {
     return false;
   }
 
@@ -201,6 +204,7 @@ export function buildRecommendationResults(options: {
   users: User[];
   interactions: Interaction[];
   tenantPref?: TenantPreference | null;
+  userPreferredCity?: string | null;
   filters?: RoomFilters | null;
   latitude: number;
   longitude: number;
@@ -212,6 +216,7 @@ export function buildRecommendationResults(options: {
     users,
     interactions,
     tenantPref,
+    userPreferredCity,
     filters,
     latitude,
     longitude,
@@ -224,7 +229,7 @@ export function buildRecommendationResults(options: {
     .map((i) => i.roomId);
 
   const scored = rooms.map((room) => {
-    if (!matchesTenantPreferences(room, tenantPref) || !matchesRoomFilters(room, filters)) {
+    if (!matchesTenantPreferences(room, tenantPref, userPreferredCity) || !matchesRoomFilters(room, filters)) {
       return {
         roomId: room.id,
         room,

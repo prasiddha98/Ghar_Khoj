@@ -40,6 +40,7 @@ export function ContractDialog({
       .toISOString()
       .split("T")[0],
     terms: "",
+    commissionNote: "Tenant should pay a minimum commission of NPR 100 to Ghar Khoj before signing this contract.",
   });
 
   useEffect(() => {
@@ -141,6 +142,10 @@ export function ContractDialog({
       }
 
       // Create contract using the room's posted price
+      const combinedTerms = [formData.terms?.trim(), formData.commissionNote?.trim()]
+        .filter(Boolean)
+        .join("\n\n");
+
       const contractResponse = await customFetch("/api/contracts", {
         method: "POST",
         body: JSON.stringify({
@@ -151,7 +156,7 @@ export function ContractDialog({
           rentAmount: matchData.room?.price,
           startDate: formData.startDate,
           endDate: formData.endDate,
-          terms: formData.terms,
+          terms: combinedTerms,
         }),
       });
 
@@ -170,6 +175,7 @@ export function ContractDialog({
             .toISOString()
             .split("T")[0],
           terms: "",
+          commissionNote: "Tenant should pay a minimum commission of NPR 100 to Ghar Khoj before signing this contract.",
         });
       }
     } catch (error: any) {
@@ -296,6 +302,21 @@ export function ContractDialog({
               }
               className="min-h-24"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="commissionNote">Commission Note</Label>
+            <Textarea
+              id="commissionNote"
+              value={formData.commissionNote}
+              onChange={(e) =>
+                setFormData({ ...formData, commissionNote: e.target.value })
+              }
+              className="min-h-24"
+            />
+            <p className="text-xs text-muted-foreground">
+              Include a commission note so the tenant understands the NPR 100 signing fee payable to Ghar Khoj.
+            </p>
           </div>
 
           <div className="flex gap-2 justify-end">

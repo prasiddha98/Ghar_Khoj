@@ -179,6 +179,7 @@ export default function Messages() {
   if (!isRealUser) {
     return (
       <div className="h-[70vh] flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
+        <BackButton fallback="/" label="Back" className="mb-6 text-left" />
         <div className="w-24 h-24 bg-gradient-to-br from-muted to-muted/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
           <Lock className="text-muted-foreground" size={40} />
         </div>
@@ -198,6 +199,7 @@ export default function Messages() {
   if (!isVerified) {
     return (
       <div className="h-[70vh] flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
+        <BackButton fallback="/" label="Back" className="mb-6 text-left" />
         <div className="w-24 h-24 bg-gradient-to-br from-muted to-muted/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
           <Lock className="text-muted-foreground" size={40} />
         </div>
@@ -310,12 +312,12 @@ export default function Messages() {
                 <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted/40 px-3 py-1.5 rounded-full">
                   <Building size={12} /> Room inquiry
                 </div>
-                {activeConvId && (
+                {activeConvId && user?.role === "owner" && (
                   <ContractDialog
-                    tenantId={user?.role === "tenant" ? user.id : activeConvId}
-                    ownerId={user?.role === "owner" ? user.id : activeConvId}
-                    tenantName={user?.role === "tenant" ? `${user.firstName} ${user.lastName || ""}`.trim() : partnerName}
-                    ownerName={user?.role === "owner" ? `${user.firstName} ${user.lastName || ""}`.trim() : partnerName}
+                    tenantId={activeConvId}
+                    ownerId={user.id}
+                    tenantName={partnerName}
+                    ownerName={`${user.firstName} ${user.lastName || ""}`.trim()}
                   />
                 )}
               </div>

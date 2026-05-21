@@ -15,7 +15,7 @@ interface RoomCardProps {
 }
 
 export function RoomCard({ room, recommendationScore, recommendationTag, className }: RoomCardProps) {
-  const { userId } = useAuth();
+  const { userId, isVerified } = useAuth();
   const { toast } = useToast();
   const [isSaved, setIsSaved] = useState(false);
   
@@ -56,19 +56,21 @@ export function RoomCard({ room, recommendationScore, recommendationTag, classNa
     <Link href={`/room/${room.id}`} className={cn("block group", className)}>
       <div className="bg-card rounded-2xl border border-border/50 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 h-full flex flex-col relative">
         
-        {/* Badges */}
-        <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
-          {room.isVerified && (
-            <div className="bg-green-500 text-white text-xs font-bold px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1 backdrop-blur-md">
-              <CheckCircle2 size={12} /> Verified
-            </div>
-          )}
-          {recommendationTag && (
-            <div className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-md max-w-[150px] truncate backdrop-blur-md">
-              ✨ {recommendationTag}
-            </div>
-          )}
-        </div>
+        {/* Badges - Only show to verified users */}
+        {isVerified && (
+          <div className="absolute top-3 left-3 flex flex-col gap-2 z-10">
+            {room.isVerified && (
+              <div className="bg-green-500 text-white text-xs font-bold px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1 backdrop-blur-md">
+                <CheckCircle2 size={12} /> Verified
+              </div>
+            )}
+            {recommendationTag && (
+              <div className="bg-primary text-white text-[10px] font-bold px-2 py-1 rounded-lg shadow-md max-w-[150px] truncate backdrop-blur-md">
+                ✨ {recommendationTag}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Save Button */}
         <button 
@@ -124,7 +126,7 @@ export function RoomCard({ room, recommendationScore, recommendationTag, classNa
               <span className="text-xl font-bold text-primary">{formatCurrency(room.price)}</span>
               <span className="text-xs text-muted-foreground font-medium"> /month</span>
             </div>
-            {recommendationScore !== undefined && recommendationScore !== null && (
+            {isVerified && recommendationScore !== undefined && recommendationScore !== null && (
               <div className="flex items-center gap-1">
                 <span className="text-xs font-bold text-secondary bg-secondary/10 px-2 py-1 rounded-md">
                   {Math.round(recommendationScore * 100)}% Match

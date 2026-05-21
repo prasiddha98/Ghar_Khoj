@@ -16,6 +16,9 @@ services:
       - PUBLIC_OBJECT_SEARCH_PATHS=ghar-khoj-public
       - USE_LOCAL_STORAGE=true
       - LOCAL_STORAGE_DIR=/repo/local-storage
+      - KHALTI_SECRET_KEY=${KHALTI_SECRET_KEY}
+      - KHALTI_ENV=${KHALTI_ENV:-development}
+      - KHALTI_WEB_BASE_URL=${KHALTI_WEB_BASE_URL:-http://localhost:5173}
     restart: unless-stopped
     depends_on:
       - db
@@ -28,8 +31,9 @@ services:
       - "5173:5173"
     environment:
       - PORT=5173
-      - BASE_PATH=/ 
-      - API_PROXY_TARGET=http://api:3000
+      - BASE_PATH=/
+      - API_PROXY_TARGET=${API_PROXY_TARGET:-http://api:3000}
+      - VITE_KHALTI_PUBLIC_KEY=${VITE_KHALTI_PUBLIC_KEY}
     restart: unless-stopped
     depends_on:
       - api

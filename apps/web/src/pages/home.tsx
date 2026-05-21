@@ -20,7 +20,13 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const { data: roomsData, isLoading: isRoomsLoading } = useGetRooms({ limit: 6, isVerified: true });
   const recommendationMutation = useGetRecommendations();
-  const { user, userId, isAuthenticated } = useAuth();
+  const { user, userId, isAuthenticated, isVerified } = useAuth();
+
+  const getRandomNepalLocation = () => {
+    const latitude = 26 + Math.random() * 3; // roughly Nepal bounds
+    const longitude = 80 + Math.random() * 8;
+    return { latitude, longitude };
+  };
 
   const requestRecommendations = (latitude: number, longitude: number) => {
     recommendationMutation.mutate(
@@ -43,6 +49,15 @@ export default function Home() {
       const fallbackLongitude = 85.3240;
       requestRecommendations(fallbackLatitude, fallbackLongitude);
     };
+
+    if (!isVerified) {
+      const randomLocation = getRandomNepalLocation();
+      setGeoError(
+        "Unverified users are shown random location recommendations until verification. Verify your account to get personalized location-based results."
+      );
+      requestRecommendations(randomLocation.latitude, randomLocation.longitude);
+      return;
+    }
 
     if (typeof navigator !== "undefined" && "geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(

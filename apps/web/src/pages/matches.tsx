@@ -195,6 +195,48 @@ export default function MatchesPage() {
   const active = matches.filter(m => m.status !== "rejected");
   const declined = matches.filter(m => m.status === "rejected");
 
+  // Check if user is logged in
+  if (!user) {
+    return (
+      <div className="h-[70vh] flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
+        <BackButton fallback="/" label="Back" className="mb-6 text-left" />
+        <div className="w-24 h-24 bg-gradient-to-br from-muted to-muted/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
+          <Lock className="text-muted-foreground" size={40} />
+        </div>
+        <h2 className="text-2xl font-bold mb-3">Sign In Required</h2>
+        <p className="text-muted-foreground mb-8 leading-relaxed">
+          You must sign in to view and manage your matches.
+        </p>
+        <Link href="/login">
+          <Button size="lg" className="w-full rounded-xl bg-primary shadow-lg shadow-primary/25">
+            Sign In to View Matches
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  // Check if user is verified
+  if (!isVerified) {
+    return (
+      <div className="h-[70vh] flex flex-col items-center justify-center text-center p-6 max-w-md mx-auto">
+        <BackButton fallback="/" label="Back" className="mb-6 text-left" />
+        <div className="w-24 h-24 bg-gradient-to-br from-muted to-muted/50 rounded-full flex items-center justify-center mb-6 shadow-inner">
+          <Lock className="text-muted-foreground" size={40} />
+        </div>
+        <h2 className="text-2xl font-bold mb-3">Identity Verification Required</h2>
+        <p className="text-muted-foreground mb-8 leading-relaxed">
+          To protect our community, you must verify your identity to view matches and communicate with room owners or tenants.
+        </p>
+        <Link href="/verification">
+          <Button size="lg" className="w-full rounded-xl bg-primary shadow-lg shadow-primary/25">
+            Verify Identity to Unlock Matches
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}

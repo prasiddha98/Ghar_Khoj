@@ -9,6 +9,9 @@ export const contractsTable = pgTable("contracts", {
   ownerId: integer("owner_id").notNull(),
   roomId: integer("room_id").notNull(),
   rentAmount: integer("rent_amount").notNull(),
+  tenantPaymentStatus: text("tenant_payment_status").notNull().default("pending"),
+  tenantPaymentReference: text("tenant_payment_reference"),
+  tenantPaymentVerifiedAt: timestamp("tenant_payment_verified_at"),
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   terms: text("terms"),
@@ -28,6 +31,9 @@ export const insertContractSchema = createInsertSchema(contractsTable).omit({
   createdAt: true,
   ownerSignedAt: true,
   tenantSignedAt: true,
+  tenantPaymentStatus: true,
+  tenantPaymentReference: true,
+  tenantPaymentVerifiedAt: true,
   adminVerifiedAt: true,
 });
 export type InsertContract = z.infer<typeof insertContractSchema>;

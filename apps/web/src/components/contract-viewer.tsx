@@ -4,6 +4,9 @@ import { Download, Eye, Loader2, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { generateContractPDF } from "@/lib/pdf-generator";
@@ -14,13 +17,20 @@ interface ContractViewerProps {
     matchId: number;
     tenant?: { firstName: string; lastName?: string };
     owner?: { firstName: string; lastName?: string };
-    room?: { title: string; city: string; address: string };
+    room?: { id?: number; title: string; city: string; address: string };
     rentAmount: number;
+    tenantPaymentStatus?: string;
+    tenantPaymentReference?: string | null;
+    tenantSignedAt?: string | null;
+    ownerSignedAt?: string | null;
+    ownerSignature?: string | null;
+    tenantSignature?: string | null;
+    status: string;
     startDate: string;
     endDate: string;
-    terms?: string;
+    terms?: string | null;
     createdAt: string;
-    contractPdfUrl?: string;
+    contractPdfUrl?: string | null;
   };
 }
 
@@ -36,9 +46,9 @@ export function ContractViewer({ contract }: ContractViewerProps) {
     ? `${contract.owner.firstName} ${contract.owner.lastName || ""}`.trim()
     : "Owner";
 
-  const roomName = contract.room
+  const roomName = contract.room && contract.room.title
     ? `${contract.room.title} (${contract.room.city})`
-    : `Room #${contract.room?.id || "N/A"}`;
+    : "Room #N/A";
 
   const tenantSigDisplay = contract.tenantSignature
     ? (contract.tenantSignature.startsWith("data:image")
@@ -116,13 +126,12 @@ export function ContractViewer({ contract }: ContractViewerProps) {
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+        <DialogHeader className="text-center border-b pb-4">
+          <DialogTitle className="text-3xl font-bold mb-2">RENTAL AGREEMENT</DialogTitle>
+          <DialogDescription className="text-gray-600">Property Rental Contract</DialogDescription>
+        </DialogHeader>
         <div className="flex-1 overflow-auto bg-muted/50 p-4">
           <div className="bg-white p-8 space-y-6 max-w-3xl mx-auto">
-            {/* Header */}
-            <div className="text-center border-b pb-4">
-              <h1 className="text-3xl font-bold mb-2">RENTAL AGREEMENT</h1>
-              <p className="text-gray-600">Property Rental Contract</p>
-            </div>
 
             {/* Logo / Stamp Area */}
             <div className="flex justify-between items-start gap-4">
@@ -182,7 +191,7 @@ export function ContractViewer({ contract }: ContractViewerProps) {
             {/* Financial Terms */}
             <div className="space-y-3">
               <h2 className="text-xl font-bold text-gray-800">FINANCIAL TERMS</h2>
-              <div className="border p-4 rounded">
+              <div className="border p-4 rounded space-y-3">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <p className="text-xs text-gray-600">Monthly Rent Amount</p>
@@ -194,6 +203,20 @@ export function ContractViewer({ contract }: ContractViewerProps) {
                     <p className="text-xs text-gray-600">Payment Frequency</p>
                     <p className="font-semibold text-sm">Monthly (Due on 1st)</p>
                   </div>
+                </div>
+                {contract.tenantPaymentStatus && (
+                  <div className={contract.tenantPaymentStatus === "paid" ? "rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800" : "rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800"}>
+                    <p className="font-semibold">Khalti Payment</p>
+                    <p>{contract.tenantPaymentStatus === "paid" ? "Payment received via Khalti." : "Payment pending via Khalti."}</p>
+                    {contract.tenantPaymentReference && <p className="text-xs text-muted-foreground">Reference: {contract.tenantPaymentReference}</p>}
+                  </div>
+                )}
+                <div className={contract.tenantPaymentStatus === "paid" ? "rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800" : "rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800"}>
+                  <p className="font-semibold">Signing Commission</p>
+                  <p>{contract.tenantPaymentStatus === "paid"
+                    ? "NPR 100 has been paid as commission to Ghar KHOJ."
+                    : "Tenant should pay a minimum commission of NPR 100 to Ghar KHOJ before signing."}
+                  </p>
                 </div>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
+import { BackButton } from "@/components/back-button";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Users, Home, ShieldCheck, MessageSquare, BarChart2, CheckCircle2,
@@ -262,7 +263,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen -mx-4 md:-mx-6 lg:-mx-8 -mt-4 md:-mt-6 bg-muted/20">
-
+      <BackButton fallback="/" label="Back" className="absolute top-4 left-4 z-10" />
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-800 text-white overflow-hidden">
         <div className="max-w-6xl mx-auto px-4 md:px-10 py-10">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">

@@ -7,19 +7,20 @@ interface ContractPDFGeneratorProps {
     owner?: { firstName: string; lastName?: string };
     room?: { title: string; city: string; address: string };
     rentAmount: number;
+    tenantPaymentStatus?: string;
     startDate: string;
     endDate: string;
-    terms?: string;
+    terms?: string | null;
     createdAt: string;
-    ownerSignature?: string;
-    tenantSignature?: string;
-    ownerSignedAt?: string;
-    tenantSignedAt?: string;
+    ownerSignature?: string | null;
+    tenantSignature?: string | null;
+    ownerSignedAt?: string | null;
+    tenantSignedAt?: string | null;
     status: string;
   };
 }
 
-export async function generateContractPDF(contract: ContractPDFGeneratorProps["contract"]): Promise<Blob> {
+export async function generateContractPDF(contract: any): Promise<Blob> {
   const tenantName = contract.tenant
     ? `${contract.tenant.firstName} ${contract.tenant.lastName || ""}`.trim()
     : "Tenant";
@@ -44,6 +45,7 @@ export async function generateContractPDF(contract: ContractPDFGeneratorProps["c
 
   const contractDate = new Date(contract.createdAt).toLocaleDateString("en-NP");
   const currentDate = new Date().toLocaleDateString("en-NP");
+  const commissionPaid = contract.tenantPaymentStatus === "paid";
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -138,6 +140,10 @@ export async function generateContractPDF(contract: ContractPDFGeneratorProps["c
             <div class="info-row">
               <div class="info-label">Payment Frequency</div>
               <div class="info-value">Monthly, payable by the 1st</div>
+            </div>
+            <div class="info-row">
+              <div class="info-label">Signing Commission</div>
+              <div class="info-value text-strong">${commissionPaid ? "NPR 100 paid to Ghar KHOJ" : "NPR 100 commission due to Ghar KHOJ before signing"}</div>
             </div>
           </div>
         </div>

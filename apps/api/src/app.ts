@@ -62,6 +62,9 @@ app.get("/api/", (req, res) => {
       { path: "/api/contracts/match/:matchId", methods: ["GET"] },
       { path: "/api/contracts/user/:userId", methods: ["GET"] },
       { path: "/api/contracts/:id/sign", methods: ["PATCH"] },
+      { path: "/api/contracts/:id/pay", methods: ["POST"] },
+      { path: "/api/contracts/:id/khalti/initiate", methods: ["POST"] },
+      { path: "/api/contracts/:id/khalti/verify", methods: ["POST"] },
       { path: "/api/contracts/:id/verify", methods: ["PATCH"] },
       { path: "/api/admin/contracts", methods: ["GET"] },
       { path: "/api/healthz", methods: ["GET"] }
