@@ -16,5 +16,8 @@
   "optionalDependencies": {
     "@esbuild/darwin-arm64": "0.27.3",
     "@rollup/rollup-darwin-arm64": "^4.60.3"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3"
   }
 }

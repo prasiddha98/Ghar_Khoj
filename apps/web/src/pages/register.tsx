@@ -120,7 +120,12 @@ export default function Register() {
 
           <div>
             <label className="text-xs font-semibold text-foreground mb-1.5 block">Phone Number</label>
-            <Input value={phone} onChange={e => setPhone(e.target.value)} placeholder="98XXXXXXXX" className="rounded-xl" />
+            <Input
+              value={phone}
+              onChange={e => setPhone(e.target.value.replace(/\D/g, ""))}
+              placeholder="98XXXXXXXX"
+              className="rounded-xl"
+            />
           </div>
 
           <div>

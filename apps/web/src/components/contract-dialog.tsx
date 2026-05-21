@@ -262,12 +262,14 @@ export function ContractDialog({
                 id="startDate"
                 type="date"
                 value={formData.startDate}
-                disabled
+                min={new Date().toISOString().split("T")[0]}
+                onChange={(e) =>
+                  setFormData({ ...formData, startDate: e.target.value })
+                }
                 required
-                className="bg-muted"
               />
               <p className="text-xs text-muted-foreground">
-                Start date is fixed for both parties and set to today.
+                Start date must be today or later.
               </p>
             </div>
 

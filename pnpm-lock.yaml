@@ -92,6 +92,10 @@ pnpmfileChecksum: sha256-2hjCWm1tmgte5C+OX8flhdcZdSKXWw6wUdx/0veBFFU=
 importers:
 
   .:
+    dependencies:
+      bcryptjs:
+        specifier: ^3.0.3
+        version: 3.0.3
     devDependencies:
       prettier:
         specifier: ^3.8.1

@@ -15,10 +15,31 @@ const router: IRouter = Router();
 router.post("/contracts", authRequired, async (req: AuthedRequest, res) => {
   try {
     const { matchId, tenantId, ownerId, roomId, rentAmount, startDate, endDate, terms } = req.body;
-    
+
     // Validate all required fields exist
     if (!matchId || !tenantId || !ownerId || !roomId || rentAmount === undefined || !startDate || !endDate) {
       return res.status(400).json({ error: "validation_error", message: "All fields required" });
+    }
+
+    const parseDate = (value: string) => {
+      const parts = String(value).split("-").map(Number);
+      if (parts.length !== 3 || parts.some(isNaN)) return null;
+      return new Date(parts[0], parts[1] - 1, parts[2]);
+    };
+
+    const startDateObj = parseDate(startDate);
+    const endDateObj = parseDate(endDate);
+    if (!startDateObj || !endDateObj) {
+      return res.status(400).json({ error: "validation_error", message: "Invalid date format" });
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (startDateObj < today) {
+      return res.status(400).json({ error: "validation_error", message: "Start date cannot be in the past" });
+    }
+    if (endDateObj <= startDateObj) {
+      return res.status(400).json({ error: "validation_error", message: "End date must be after the start date" });
     }
 
     // Validate rentAmount is a positive number
@@ -57,7 +78,7 @@ router.post("/contracts", authRequired, async (req: AuthedRequest, res) => {
 
     const rentAmountToUse = Number(room.price);
 
-    // Create new contract
+    // Create new contract with the selected start date
     const [contract] = await db.insert(contractsTable)
       .values({ 
         matchId, 
