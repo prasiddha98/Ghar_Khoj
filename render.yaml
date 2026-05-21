@@ -1,9 +1,9 @@
 services:
-  - type: postgres
+  - type: pserv
     name: rental-db
     plan: free
 
-  - type: web_service
+  - type: web
     name: rental-api
     env: node
     buildCommand: pnpm install && pnpm --filter @workspace/api-server run build
@@ -21,10 +21,10 @@ services:
       - key: KHALTI_WEB_BASE_URL
         value: "${KHALTI_WEB_BASE_URL}"
 
-  - type: static_site
+  - type: web
     name: rental-web
     buildCommand: pnpm install && pnpm --filter @workspace/ghar-khoj run build
-    publishPath: apps/web/dist
+    staticPublishPath: apps/web/dist
     plan: starter
     envVars:
       - key: VITE_API_URL
