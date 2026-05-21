@@ -25,7 +25,19 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// Configure CORS: allow the production frontend origin when provided.
+// In production set FRONTEND_ORIGIN to the deployed frontend URL (or assign KHALTI_WEB_BASE_URL).
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || process.env.KHALTI_WEB_BASE_URL || "";
+if (FRONTEND_ORIGIN) {
+  app.use(
+    cors({
+      origin: FRONTEND_ORIGIN,
+    }),
+  );
+} else {
+  // No explicit frontend origin configured — fall back to permissive CORS for local/dev use.
+  app.use(cors());
+}
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

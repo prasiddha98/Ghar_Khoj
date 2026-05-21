@@ -1,0 +1,33 @@
+services:
+  - type: postgres
+    name: rental-db
+    plan: free
+
+  - type: web_service
+    name: rental-api
+    env: node
+    buildCommand: pnpm install && pnpm --filter @workspace/api-server run build
+    startCommand: pnpm --filter @workspace/api-server run start
+    plan: starter
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: rental-db
+      - key: JWT_SECRET
+        value: "${JWT_SECRET}"
+      - key: KHALTI_SECRET_KEY
+        value: "${KHALTI_SECRET_KEY}"
+      - key: KHALTI_ENV
+        value: "sandbox"
+      - key: KHALTI_WEB_BASE_URL
+        value: "${KHALTI_WEB_BASE_URL}"
+
+  - type: static_site
+    name: rental-web
+    buildCommand: pnpm install && pnpm --filter @workspace/ghar-khoj run build
+    publishPath: apps/web/dist
+    plan: starter
+    envVars:
+      - key: VITE_API_URL
+        value: "${VITE_API_URL}"
+      - key: VITE_KHALTI_PUBLIC_KEY
+        value: "${VITE_KHALTI_PUBLIC_KEY}"

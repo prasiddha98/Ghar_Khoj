@@ -12,6 +12,12 @@ export const contractsTable = pgTable("contracts", {
   tenantPaymentStatus: text("tenant_payment_status").notNull().default("pending"),
   tenantPaymentReference: text("tenant_payment_reference"),
   tenantPaymentVerifiedAt: timestamp("tenant_payment_verified_at"),
+  // Khalti payment identifier
+  pidx: text("pidx"),
+  // Generic payment status for contract-level payments (unpaid | paid)
+  paymentStatus: text("payment_status").notNull().default("unpaid"),
+  // When the contract was fully signed/marked paid
+  signedAt: timestamp("signed_at"),
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   terms: text("terms"),

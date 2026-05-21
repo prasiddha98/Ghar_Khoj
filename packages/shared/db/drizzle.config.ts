@@ -11,4 +11,7 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL,
   },
+  migrations: {
+    folder: path.join(__dirname, "./drizzle/migrations"),
+  },
 });

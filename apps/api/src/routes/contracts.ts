@@ -221,7 +221,7 @@ router.post("/contracts/:id/khalti/initiate", authRequired, async (req: AuthedRe
       return res.status(403).json({ error: "forbidden", message: "Only the tenant can initiate payment for this contract" });
     }
 
-    const isAlreadyPaid = contract.tenantPaymentStatus === "paid" || ["signed", "fully_signed", "verified", "cancelled"].includes(contract.status);
+    const isAlreadyPaid = (contract.paymentStatus === "paid") || (contract.tenantPaymentStatus === "paid") || ["signed", "fully_signed", "verified", "cancelled"].includes(contract.status);
     if (isAlreadyPaid) {
       return res.status(400).json({ error: "payment_exists", message: "Payment already completed or contract already finalized" });
     }
@@ -230,13 +230,21 @@ router.post("/contracts/:id/khalti/initiate", authRequired, async (req: AuthedRe
       return res.status(500).json({ error: "config_error", message: "Khalti secret key is not configured" });
     }
 
+    // Load tenant info for customer_info
+    const [tenant] = await db.select().from(usersTable).where(eq(usersTable.id, contract.tenantId));
+
     const purchaseOrderId = `contract-${contract.id}`;
-    const payload = {
+    const payload: any = {
       return_url: `${KHALTI_WEB_BASE_URL}/contracts/khalti-callback`,
       website_url: KHALTI_WEB_BASE_URL,
       amount: KHALTI_PAYMENT_AMOUNT * 100,
       purchase_order_id: purchaseOrderId,
       purchase_order_name: "Rental Contract Signing Fee",
+      customer_info: {
+        name: tenant ? `${tenant.firstName} ${tenant.lastName || ""}`.trim() : "",
+        email: tenant?.email || "",
+        phone: tenant?.phone || "",
+      },
     };
 
     const response = await fetch(`${KHALTI_API_BASE_URL}/epayment/initiate/`, {
@@ -254,16 +262,10 @@ router.post("/contracts/:id/khalti/initiate", authRequired, async (req: AuthedRe
     }
 
     const data = await response.json() as { payment_url: string; pidx: string; expires_at?: string };
-    const updatePayload: Record<string, unknown> = {
-      tenantPaymentReference: data.pidx,
-    };
 
-    if (contract.status === "draft" || contract.status === "pending_payment") {
-      updatePayload.status = "pending_payment";
-    }
-
+    // Save pidx and mark contract as pending_payment
     await db.update(contractsTable)
-      .set(updatePayload)
+      .set({ pidx: data.pidx, paymentStatus: "unpaid", tenantPaymentReference: data.pidx, status: "pending_payment" })
       .where(eq(contractsTable.id, id));
 
     return res.json({ paymentUrl: data.payment_url, payment_url: data.payment_url, pidx: data.pidx });
@@ -294,7 +296,7 @@ router.post("/contracts/:id/khalti/verify", authRequired, async (req: AuthedRequ
       return res.status(403).json({ success: false, message: "Only the tenant can verify payment for this contract" });
     }
 
-    if (contract.tenantPaymentReference && contract.tenantPaymentReference !== pidx) {
+    if (contract.pidx && contract.pidx !== pidx) {
       return res.status(400).json({ success: false, message: "Payment reference does not match the expected contract payment." });
     }
 
@@ -317,21 +319,27 @@ router.post("/contracts/:id/khalti/verify", authRequired, async (req: AuthedRequ
     }
 
     const lookup = await response.json() as { status?: string; transaction_id?: string; pidx?: string; [key: string]: any };
-    if ((lookup.status || "").toLowerCase() !== "completed") {
+
+    // Only treat exact "Completed" as success
+    if (lookup.status !== "Completed") {
       return res.status(400).json({ success: false, message: "Payment not completed", status: lookup.status });
     }
 
     const updateData: Record<string, unknown> = {
       tenantPaymentStatus: "paid",
+      paymentStatus: "paid",
       tenantPaymentReference: pidx,
       tenantPaymentVerifiedAt: new Date(),
+      pidx,
+      status: "signed",
+      signedAt: new Date(),
     };
 
     await db.update(contractsTable)
       .set(updateData)
       .where(eq(contractsTable.id, id));
 
-    return res.json({ success: true, message: "Payment verified successfully" });
+    return res.json({ success: true, message: "Contract signed successfully", transaction_id: lookup.transaction_id || null });
   } catch (err) {
     req.log.error({ err }, "Error verifying Khalti payment");
     return res.status(500).json({ success: false, message: "Failed to verify Khalti payment" });

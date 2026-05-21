@@ -5,7 +5,8 @@
   "scripts": {
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./apps/**\" --filter \"./packages/shared/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./apps/**\" --filter \"./packages/shared/**\" --filter \"./scripts\" --if-present run typecheck",
+    "db:migrate": "pnpm --filter @workspace/db run push"
   },
   "private": true,
   "devDependencies": {

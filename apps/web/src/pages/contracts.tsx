@@ -231,9 +231,10 @@ function SignModal({ contract, role, onClose, onSigned }: {
   );
 }
 
-function ContractDetail({ id, onBack, userId, onRequestSign }: {
+function ContractDetail({ id, onBack, userId, onRequestSign, onPay }: {
   id: number; onBack: () => void; userId: number | null;
   onRequestSign: (contract: Contract, role: string) => void;
+  onPay: (id: number) => void;
 }) {
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
@@ -281,9 +282,14 @@ function ContractDetail({ id, onBack, userId, onRequestSign }: {
               </Button>
             </>
           ) : (
-            <p className="text-sm text-amber-700">
-              Please complete the payment of NPR 100 before signing this contract.
-            </p>
+            <>
+              <p className="text-sm text-amber-700">Please complete the payment of NPR 100 before signing this contract.</p>
+              {isTenant && (
+                <div className="pt-3">
+                  <Button size="sm" className="rounded-xl" onClick={() => onPay(contract.id)}>Pay Rs. 100 & Sign Contract</Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -410,6 +416,7 @@ export default function ContractsPage() {
         onBack={() => setLocation("/contracts")}
         userId={userId}
         onRequestSign={handleSign}
+        onPay={handlePay}
       />
     );
   }
