@@ -22,24 +22,26 @@ export function getMediaUrl(url?: string | null) {
 
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 
+  const apiBase = (import.meta.env.VITE_API_URL ?? import.meta.env.BASE_URL).replace(/\/$/, "");
+
   if (trimmed.startsWith("/api/storage/objects/")) {
-    return `${base}${trimmed}`;
+    return `${apiBase}${trimmed}`;
   }
 
   if (trimmed.startsWith("/storage/objects/")) {
-    return `${base}/api${trimmed}`;
+    return `${apiBase}/api${trimmed}`;
   }
 
   if (trimmed.startsWith("/objects/")) {
-    return `${base}/api/storage${trimmed}`;
+    return `${apiBase}/api/storage${trimmed}`;
   }
 
   if (trimmed.startsWith("storage/objects/")) {
-    return `${base}/api/${trimmed}`;
+    return `${apiBase}/api/${trimmed}`;
   }
 
   if (trimmed.startsWith("objects/")) {
-    return `${base}/api/storage/${trimmed}`;
+    return `${apiBase}/api/storage/${trimmed}`;
   }
 
   if (trimmed.startsWith("/")) {

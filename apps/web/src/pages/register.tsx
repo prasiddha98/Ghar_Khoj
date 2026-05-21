@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, Home, Building2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { customFetch } from "@/lib/customFetch";
 
 const NEPAL_CITIES = ["Kathmandu", "Lalitpur", "Bhaktapur", "Pokhara", "Biratnagar", "Birgunj", "Dharan", "Butwal", "Hetauda", "Nepalgunj"];
 
@@ -40,14 +41,11 @@ export default function Register() {
 
     setLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}api/auth/register`, {
+      const data = await customFetch<{ message: string }>("/api/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ firstName, lastName, email, phone, password, role, preferredCity }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Registration failed");
-
+      
       toast({ title: "Account created!", description: "Please sign in to continue." });
       setLocation("/login");
     } catch (err: any) {

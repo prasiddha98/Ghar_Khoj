@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BackButton } from "@/components/back-button";
+import { customFetchRaw } from "@/lib/customFetch";
 
 interface Room {
   id: number; title: string; city: string; address: string; price: number;
@@ -154,7 +155,7 @@ export default function MatchesPage() {
       const url = isOwner
         ? `/api/matches/owner/${userId}`
         : `/api/matches/tenant/${userId}`;
-      const res = await fetch(url, { headers });
+      const res = await customFetchRaw(url, { headers });
       const data = await res.json();
       setMatches(data.matches || []);
     } catch {
@@ -173,7 +174,7 @@ export default function MatchesPage() {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers.Authorization = `Bearer ${token}`;
 
-      const res = await fetch(`/api/matches/${matchId}/respond`, {
+      const res = await customFetchRaw(`/api/matches/${matchId}/respond`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ role: "owner", decision }),

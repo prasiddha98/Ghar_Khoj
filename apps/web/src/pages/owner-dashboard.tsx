@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { BackButton } from "@/components/back-button";
+import { customFetchRaw } from "@/lib/customFetch";
 import { motion } from "framer-motion";
 import {
   Building, PlusCircle, Eye, EyeOff, Trash2, CheckCircle2, MapPin,
@@ -29,7 +30,7 @@ function useOwnerRooms(ownerId: number) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    fetch(`/api/rooms/owner/${ownerId}`, { headers })
+    customFetchRaw(`/api/rooms/owner/${ownerId}`, { headers })
       .then(r => r.json())
       .then(d => { setRooms(d.rooms || []); setLoading(false); })
       .catch(() => setLoading(false));
@@ -60,7 +61,7 @@ export default function OwnerDashboard() {
     if (token) headers.Authorization = `Bearer ${token}`;
 
     try {
-      const r = await fetch(`/api/rooms/${room.id}`, {
+      const r = await customFetchRaw(`/api/rooms/${room.id}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ isAvailable: !room.isAvailable }),
@@ -88,7 +89,7 @@ export default function OwnerDashboard() {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
 
-    const r = await fetch(`/api/rooms/${roomId}`, { method: "DELETE", headers });
+    const r = await customFetchRaw(`/api/rooms/${roomId}`, { method: "DELETE", headers });
     if (r.ok) { toast({ title: "Listing deleted" }); refetch(); }
   };
 

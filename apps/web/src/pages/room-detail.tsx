@@ -1,6 +1,7 @@
 import { useRoute, useLocation } from "wouter";
 import { useGetRoom, useGetUser, useCreateInteraction, useGetTenantMatches, getGetUserQueryKey, getGetTenantMatchesQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
+import { customFetchRaw } from "@/lib/customFetch";
 import { MapPin, ShieldCheck, Heart, MessageSquare, Car, Wifi, Droplets, Zap, BedDouble, Share2, Info, CheckCircle2, Users, Sparkles, Loader2, ChevronLeft, ChevronRight, X, Edit, Trash2, Plus, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, cn, getMediaUrl } from "@/lib/utils";
@@ -72,7 +73,7 @@ export default function RoomDetail() {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers.Authorization = `Bearer ${token}`;
 
-      const res = await fetch("/api/matches", {
+      const res = await customFetchRaw("/api/matches", {
         method: "POST",
         headers,
         body: JSON.stringify({ tenantId: userId, ownerId: room.ownerId, roomId: room.id }),
@@ -102,7 +103,7 @@ export default function RoomDetail() {
       }
       const headers: Record<string, string> = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
 
-      const res = await fetch(`/api/rooms/${room.id}`, {
+      const res = await customFetchRaw(`/api/rooms/${room.id}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ photos: newPhotos }),
@@ -145,7 +146,7 @@ export default function RoomDetail() {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers.Authorization = `Bearer ${token}`;
 
-      const res = await fetch(`/api/rooms/${room.id}`, {
+      const res = await customFetchRaw(`/api/rooms/${room.id}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ photos: allPhotos }),
@@ -176,7 +177,7 @@ export default function RoomDetail() {
         ...room.photos.slice(photoIndex + 1)
       ];
 
-      const res = await fetch(`/api/rooms/${room.id}`, {
+      const res = await customFetchRaw(`/api/rooms/${room.id}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ photos: newPhotos }),

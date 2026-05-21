@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { customFetch } from "@/lib/customFetch";
 
 export default function Login() {
   const { toast } = useToast();
@@ -20,13 +21,10 @@ export default function Login() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.BASE_URL}api/auth/login`, {
+      const data = await customFetch<{ token: string; id: string; firstName: string }>("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Login failed");
 
       console.log("=== Login Response ===");
       console.log("data:", data);

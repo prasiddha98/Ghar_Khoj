@@ -397,6 +397,9 @@ importers:
 
   packages/shared/db:
     dependencies:
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       drizzle-orm:
         specifier: ^0.45.1
         version: 0.45.2(@types/pg@8.20.0)(pg@8.21.0)
@@ -1872,6 +1875,10 @@ packages:
 
   dompurify@3.4.5:
     resolution: {integrity: sha512-OrwIBKsdNSVEeubdJ1HBv/wNENRM9ytAVCv7YXt//A3vPdVMNuACRqK9mXCGCBW2ln7BT/A4X0jXHo2Gu89miA==}
+
+  dotenv@17.4.2:
+    resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
+    engines: {node: '>=12'}
 
   drizzle-kit@0.31.10:
     resolution: {integrity: sha512-7OZcmQUrdGI+DUNNsKBn1aW8qSoKuTH7d0mYgSP8bAzdFzKoovxEFnoGQp2dVs82EOJeYycqRtciopszwUf8bw==}
@@ -4907,6 +4914,8 @@ snapshots:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
     optional: true
+
+  dotenv@17.4.2: {}
 
   drizzle-kit@0.31.10:
     dependencies:

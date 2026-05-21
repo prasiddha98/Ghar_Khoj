@@ -7,6 +7,7 @@ import { ShieldCheck, AlertCircle, CheckCircle2, FileText, Upload, Camera, X, Lo
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { uploadFile } from "@/hooks/use-upload";
+import { customFetchRaw } from "@/lib/customFetch";
 
 const DOC_TYPES = [
   { value: "citizenship", label: "Citizenship Certificate" },
@@ -114,7 +115,7 @@ export default function Verification() {
         headers.Authorization = `Bearer ${token}`;
       }
 
-      const res = await fetch(`/api/verification`, {
+      const res = await customFetchRaw(`/api/verification`, {
         method: "POST",
         headers,
         body: JSON.stringify({

@@ -5,11 +5,13 @@ import { setAuthTokenGetter, setBaseUrl } from "@workspace/api-client-react";
 
 // Set base URL for API requests
 // The generated API URLs already include "/api", so set base to just the server
-// In development: http://localhost:3000
-// In production: use environment variable or relative path
-const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-console.log("[main.tsx] Setting API base URL:", apiBaseUrl);
-setBaseUrl(apiBaseUrl);
+export const API_BASE = import.meta.env.VITE_API_URL;
+
+if (!API_BASE) {
+  throw new Error("VITE_API_URL must be configured for the frontend.");
+}
+
+setBaseUrl(API_BASE);
 
 // Attach JWT to every protected API request
 console.log("[main.tsx] Setting up auth token getter...");

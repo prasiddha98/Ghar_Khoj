@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { customFetchRaw, getApiUrl } from "@/lib/customFetch";
 
 interface UploadResult {
   objectPath: string;
@@ -17,7 +18,7 @@ async function requestUploadUrl(name: string, contentType: string, size: number)
     ...(getAuthHeader() ?? {}),
   };
 
-  const res = await fetch(`${import.meta.env.BASE_URL}api/storage/uploads/request-url`, {
+  const res = await customFetchRaw("/api/storage/uploads/request-url", {
     method: "POST",
     headers,
     body: JSON.stringify({ name, contentType, size }),
@@ -52,8 +53,7 @@ export async function uploadFile(file: File): Promise<UploadResult> {
     throw new Error(`Upload failed: ${putRes.status} ${text}`);
   }
   const objectSegment = objectPath.replace(/^\/objects\//, "");
-  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const url = `${base}/api/storage/objects/${objectSegment}`;
+  const url = getApiUrl(`/api/storage/objects/${objectSegment}`);
   return { objectPath, url };
 }
 

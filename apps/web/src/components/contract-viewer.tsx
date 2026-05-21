@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Download, Eye, Loader2, X } from "lucide-react";
+import { customFetchRaw } from "@/lib/customFetch";
 import {
   Dialog,
   DialogContent,
@@ -66,7 +67,7 @@ export function ContractViewer({ contract }: ContractViewerProps) {
     if (!contract.contractPdfUrl) return;
     setIsDownloadingStored(true);
     try {
-      const response = await fetch(
+      const response = await customFetchRaw(
         `/api/storage/download?path=${encodeURIComponent(contract.contractPdfUrl)}`,
         {
           headers: {

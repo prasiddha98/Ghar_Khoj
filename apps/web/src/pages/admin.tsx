@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ContractViewer } from "@/components/contract-viewer";
+import { customFetchRaw } from "@/lib/customFetch";
 import { useToast } from "@/hooks/use-toast";
 import { cn, getMediaUrl } from "@/lib/utils";
 
@@ -64,7 +65,7 @@ function useFetch<T>(url: string) {
       if (token) headers.Authorization = `Bearer ${token}`;
     }
 
-    fetch(url, { headers })
+    customFetchRaw(url, { headers })
       .then(async r => {
         const data = await r.json().catch(() => null);
         if (!r.ok) throw new Error((data as any)?.message || r.statusText);
@@ -162,7 +163,7 @@ export default function AdminDashboard() {
 
   const approve = async (docId: number) => {
     try {
-      const r = await fetch(`/api/verification/${docId}/approve`, {
+      const r = await customFetchRaw(`/api/verification/${docId}/approve`, {
         method: "POST",
         headers: getAuthHeaders(),
       });
@@ -182,7 +183,7 @@ export default function AdminDashboard() {
 
   const reject = async (docId: number, note: string) => {
     try {
-      const r = await fetch(`/api/admin/verifications/${docId}/reject`, {
+      const r = await customFetchRaw(`/api/admin/verifications/${docId}/reject`, {
         method: "POST", headers: getAuthHeaders(), body: JSON.stringify({ note })
       });
       const result = await r.json().catch(() => null);
@@ -201,14 +202,14 @@ export default function AdminDashboard() {
   };
 
   const changeRole = async (uid: number, role: string) => {
-    const r = await fetch(`/api/admin/users/${uid}/role`, {
+    const r = await customFetchRaw(`/api/admin/users/${uid}/role`, {
       method: "PATCH", headers: getAuthHeaders(), body: JSON.stringify({ role })
     });
     if (r.ok) { toast({ title: `Role changed to ${role}` }); users.refetch(); setRoleTarget(null); }
   };
 
   const verifyRoom = async (roomId: number) => {
-    const r = await fetch(`/api/admin/rooms/${roomId}/verify`, {
+    const r = await customFetchRaw(`/api/admin/rooms/${roomId}/verify`, {
       method: "PATCH",
       headers: getAuthHeaders(),
     });
@@ -217,7 +218,7 @@ export default function AdminDashboard() {
 
   const deleteRoom = async (roomId: number) => {
     if (!confirm("Delete this listing permanently?")) return;
-    const r = await fetch(`/api/rooms/${roomId}`, {
+    const r = await customFetchRaw(`/api/rooms/${roomId}`, {
       method: "DELETE",
       headers: getAuthHeaders(),
     });
@@ -225,13 +226,12 @@ export default function AdminDashboard() {
   };
 
   const verifyContract = async (id: number, decision: "verified" | "cancelled", note?: string) => {
-    const r = await fetch(`/api/contracts/${id}/verify`, {
+    const r = await customFetchRaw(`/api/contracts/${id}/verify`, {
       method: "PATCH",
       headers: getAuthHeaders(),
       body: JSON.stringify({ decision, adminNote: note || "" }),
     });
     if (r.ok) {
-      toast({ title: decision === "verified" ? "Contract verified!" : "Contract cancelled" });
       contracts.refetch();
       setContractTarget(null);
       setContractNote("");
