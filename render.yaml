@@ -6,7 +6,7 @@ services:
   - type: web
     name: rental-api
     env: node
-    plan: free
+    plan: starter
     buildCommand: pnpm install && pnpm --filter @workspace/api-server run build
     startCommand: node apps/api/dist/index.mjs
     envVars:
@@ -30,7 +30,7 @@ services:
   - type: web
     name: rental-web
     env: static
-    plan: free
+    plan: starter
     buildCommand: pnpm install && pnpm --filter @workspace/ghar-khoj run build
     staticPublishPath: apps/web/dist
     envVars:
