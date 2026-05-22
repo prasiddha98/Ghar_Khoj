@@ -9,13 +9,11 @@ const router: IRouter = Router();
 
 async function refreshRoomAvailability() {
   const today = new Date().toISOString().split("T")[0];
+  // Only mark rooms as unavailable when contract is fully signed by both parties or verified by admin
   const activeContracts = await db.select({ roomId: contractsTable.roomId })
     .from(contractsTable)
     .where(and(
       or(
-        eq(contractsTable.status, "draft"),
-        eq(contractsTable.status, "owner_signed"),
-        eq(contractsTable.status, "tenant_signed"),
         eq(contractsTable.status, "fully_signed"),
         eq(contractsTable.status, "verified")
       ),
@@ -25,7 +23,7 @@ async function refreshRoomAvailability() {
   const activeRoomIds = activeContracts.map((c) => c.roomId);
 
   if (activeRoomIds.length > 0) {
-    // Only mark rooms with an active contract as unavailable.
+    // Only mark rooms with a fully signed or verified contract as unavailable.
     // Do not override manual rented/available state for rooms without active contracts.
     await db.update(roomsTable).set({ isAvailable: false }).where(inArray(roomsTable.id, activeRoomIds));
   }
@@ -189,7 +187,8 @@ router.delete("/rooms/:id", authRequired, async (req: AuthedRequest, res) => {
     const [room] = await db.select().from(roomsTable).where(eq(roomsTable.id, id));
     if (!room) return res.status(404).json({ error: "not_found", message: "Room not found" });
 
-    if (!req.user || room.ownerId !== req.user.id) {
+    // Allow room owner or admin to delete
+    if (!req.user || (room.ownerId !== req.user.id && req.user.role !== "admin")) {
       return res.status(403).json({ error: "forbidden", message: "Cannot delete other user's room" });
     }
 
