@@ -1,7 +1,7 @@
 import { useRoute, useLocation } from "wouter";
 import { useGetRoom, useGetUser, useCreateInteraction, useGetTenantMatches, getGetUserQueryKey, getGetTenantMatchesQueryKey } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
-import { customFetchRaw } from "@/lib/customFetch";
+import { customFetch, customFetchRaw } from "@/lib/customFetch";
 import { MapPin, ShieldCheck, Heart, MessageSquare, Car, Wifi, Droplets, Zap, BedDouble, Share2, Info, CheckCircle2, Users, Sparkles, Loader2, ChevronLeft, ChevronRight, X, Edit, Trash2, Plus, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatCurrency, cn, getMediaUrl } from "@/lib/utils";
@@ -70,20 +70,22 @@ export default function RoomDetail() {
     setSendingInterest(true);
     try {
       const token = localStorage.getItem("ghar_khoj_jwt");
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const headers: Record<string, string> = {};
       if (token) headers.Authorization = `Bearer ${token}`;
 
-      const res = await customFetchRaw("/api/matches", {
+      // Use customFetch so backend JSON error messages are thrown as Error(message)
+      await customFetch("/api/matches", {
         method: "POST",
         headers,
         body: JSON.stringify({ tenantId: userId, ownerId: room.ownerId, roomId: room.id }),
       });
-      if (!res.ok) throw new Error();
+
       refetchMatches();
       saveMutation.mutate({ data: { roomId: room.id, userId, type: "save" } });
       toast({ title: "Interest sent!", description: "The owner will be notified. Chat opens when they accept you." });
-    } catch {
-      toast({ title: "Failed to send interest", variant: "destructive" });
+    } catch (err: any) {
+      const message = err?.message || "Failed to send interest";
+      toast({ title: message, variant: "destructive" });
     } finally {
       setSendingInterest(false);
     }
