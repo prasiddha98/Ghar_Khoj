@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { interactionsTable, roomsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authRequired, type AuthedRequest } from "../middlewares/auth";
+import { safeParseInt } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -61,10 +62,10 @@ router.post("/interactions", authRequired, async (req: AuthedRequest, res) => {
       })
       .returning();
 
-    res.status(201).json(interaction);
+    return res.status(201).json(interaction);
   } catch (err) {
     req.log.error({ err }, "Error creating interaction");
-    res.status(400).json({
+    return res.status(400).json({
       error: "validation_error",
       message: "Invalid data",
     });
@@ -80,7 +81,7 @@ router.get(
   authRequired,
   async (req: AuthedRequest, res) => {
     try {
-      const userIdParam = parseInt(req.params.userId);
+      const userIdParam = safeParseInt(req.params.userId);
       const { type } = req.query;
 
       if (Number.isNaN(userIdParam)) {
@@ -118,10 +119,10 @@ router.get(
         .from(interactionsTable)
         .where(and(...conditions));
 
-      res.json({ interactions });
+      return res.json({ interactions });
     } catch (err) {
       req.log.error({ err }, "Error fetching interactions");
-      res.status(500).json({
+      return res.status(500).json({
         error: "internal_error",
         message: "Failed to fetch interactions",
       });

@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, roomsTable, messagesTable, verificationDocsTable } from "@workspace/db";
-import { eq, sql, desc } from "drizzle-orm";
+import { usersTable, roomsTable, messagesTable, verificationDocsTable, matchesTable, contractsTable, interactionsTable, tenantPreferencesTable } from "@workspace/db";
+import { eq, or, sql, desc } from "drizzle-orm";
 import { authRequired, requireRole, type AuthedRequest } from "../middlewares/auth";
+import { safeParseInt } from "../lib/http";
 
 
 
@@ -81,6 +82,34 @@ router.get("/admin/users", authRequired, requireRole(["admin"]), async (req: Aut
   }
 });
 
+router.delete("/admin/users/:id", authRequired, requireRole(["admin"]), async (req: AuthedRequest, res) => {
+  try {
+    const id = safeParseInt(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ error: "validation_error", message: "Invalid user id" });
+    }
+
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id));
+    if (!user) {
+      return res.status(404).json({ error: "not_found", message: "User not found" });
+    }
+
+    await db.delete(verificationDocsTable).where(eq(verificationDocsTable.userId, id));
+    await db.delete(messagesTable).where(or(eq(messagesTable.senderId, id), eq(messagesTable.receiverId, id)));
+    await db.delete(interactionsTable).where(eq(interactionsTable.userId, id));
+    await db.delete(tenantPreferencesTable).where(eq(tenantPreferencesTable.userId, id));
+    await db.delete(matchesTable).where(or(eq(matchesTable.tenantId, id), eq(matchesTable.ownerId, id)));
+    await db.delete(contractsTable).where(or(eq(contractsTable.tenantId, id), eq(contractsTable.ownerId, id)));
+    await db.delete(roomsTable).where(eq(roomsTable.ownerId, id));
+    await db.delete(usersTable).where(eq(usersTable.id, id));
+
+    return res.status(204).send();
+  } catch (err) {
+    req.log.error({ err }, "Error deleting user");
+    return res.status(500).json({ error: "internal_error", message: "Failed to delete user" });
+  }
+});
+
 router.get("/admin/rooms", authRequired, requireRole(["admin"]), async (req: AuthedRequest, res) => {
   try {
     const rooms = await db.select().from(roomsTable).orderBy(desc(roomsTable.createdAt));
@@ -93,7 +122,7 @@ router.get("/admin/rooms", authRequired, requireRole(["admin"]), async (req: Aut
 
 router.patch("/admin/rooms/:id/verify", authRequired, requireRole(["admin"]), async (req: AuthedRequest, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const [room] = await db.update(roomsTable).set({ isVerified: true }).where(eq(roomsTable.id, id)).returning();
     if (!room) return res.status(404).json({ error: "not_found", message: "Room not found" });
     return res.json(room);
@@ -105,7 +134,7 @@ router.patch("/admin/rooms/:id/verify", authRequired, requireRole(["admin"]), as
 
 router.patch("/admin/users/:id/role", authRequired, requireRole(["admin"]), async (req: AuthedRequest, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const { role } = req.body;
     if (!["tenant", "owner", "admin"].includes(role)) {
       return res.status(400).json({ error: "invalid_role", message: "Role must be tenant, owner, or admin" });
@@ -121,7 +150,7 @@ router.patch("/admin/users/:id/role", authRequired, requireRole(["admin"]), asyn
 
 router.post("/admin/verifications/:docId/reject", authRequired, requireRole(["admin"]), async (req: AuthedRequest, res) => {
   try {
-    const docId = parseInt(req.params.docId);
+    const docId = safeParseInt(req.params.docId);
     const { note } = req.body;
 
     const [doc] = await db.select().from(verificationDocsTable).where(eq(verificationDocsTable.id, docId));

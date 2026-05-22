@@ -2,16 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"]
+    "rootDir": "../../",
+    "types": ["node"],
+    "noImplicitAny": false
   },
-  "include": ["src"],
-  "references": [
-    {
-      "path": "../../packages/shared/db"
-    },
-    {
-      "path": "../../packages/shared/api-zod"
-    }
-  ]
+  "include": ["src", "../../services"]
 }

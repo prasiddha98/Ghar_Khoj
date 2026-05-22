@@ -111,11 +111,11 @@ export default function Messages() {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [mediaPreview, setMediaPreview] = useState<{ file: File; preview: string; type: "image" | "video" } | null>(null);
 
-  const convs = useConversations(userId, !!userId && isRealUser);
+  const convs = useConversations(userId ?? undefined, !!userId && isRealUser);
 
   const { data: threadData, refetch: refetchThread } = useGetMessages(
-    userId, activeConvId || 0,
-    { query: { queryKey: getGetMessagesQueryKey(userId, activeConvId || 0), enabled: !!activeConvId && !!userId && isRealUser, refetchInterval: 3000 } }
+    userId ?? 0, activeConvId ?? 0,
+    { query: { queryKey: getGetMessagesQueryKey(userId ?? 0, activeConvId ?? 0), enabled: !!activeConvId && !!userId && isRealUser, refetchInterval: 3000 } }
   ) as { data: MessageListResponseWithPartner | undefined; refetch: any };
 
   const sendMutation = useSendMessage({

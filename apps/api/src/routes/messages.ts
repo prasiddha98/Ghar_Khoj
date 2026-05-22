@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { messagesTable, usersTable } from "@workspace/db";
 import { eq, or, and, desc, inArray } from "drizzle-orm";
 import { authRequired, type AuthedRequest } from "../middlewares/auth";
+import { safeParseInt } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -83,7 +84,7 @@ router.get(
   authRequired,
   async (req: AuthedRequest, res) => {
     try {
-      const userIdParam = parseInt(req.params.userId);
+      const userIdParam = safeParseInt(req.params.userId);
 
       if (Number.isNaN(userIdParam)) {
         return res.status(400).json({
@@ -168,8 +169,8 @@ router.get(
   authRequired,
   async (req: AuthedRequest, res) => {
     try {
-      const userIdParam = parseInt(req.params.userId);
-      const otherUserId = parseInt(req.params.otherUserId);
+      const userIdParam = safeParseInt(req.params.userId);
+      const otherUserId = safeParseInt(req.params.otherUserId);
 
       if (Number.isNaN(userIdParam) || Number.isNaN(otherUserId)) {
         return res.status(400).json({

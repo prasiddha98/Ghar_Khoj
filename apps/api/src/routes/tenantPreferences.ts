@@ -3,13 +3,14 @@ import { db } from "@workspace/db";
 import { tenantPreferencesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { authRequired, requireSelfParam, type AuthedRequest } from "../middlewares/auth";
+import { safeParseInt } from "../lib/http";
 
 
 const router: IRouter = Router();
 
 router.get("/tenant-preferences/:userId", authRequired, requireSelfParam("userId"), async (req: AuthedRequest, res) => {
   try {
-    const userId = parseInt(req.params.userId);
+    const userId = safeParseInt(req.params.userId);
     const [pref] = await db.select().from(tenantPreferencesTable).where(eq(tenantPreferencesTable.userId, userId));
     if (!pref) {
       return res.status(404).json({ error: "not_found", message: "No preferences found" });
@@ -23,7 +24,7 @@ router.get("/tenant-preferences/:userId", authRequired, requireSelfParam("userId
 
 router.put("/tenant-preferences/:userId", authRequired, requireSelfParam("userId"), async (req: AuthedRequest, res) => {
   try {
-    const userId = parseInt(req.params.userId);
+    const userId = safeParseInt(req.params.userId);
     const { roomType, tenantType, city, minBudget, maxBudget, parking, amenities, notes } = req.body;
 
     const [existing] = await db.select().from(tenantPreferencesTable).where(eq(tenantPreferencesTable.userId, userId));

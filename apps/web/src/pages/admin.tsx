@@ -208,6 +208,28 @@ export default function AdminDashboard() {
     if (r.ok) { toast({ title: `Role changed to ${role}` }); users.refetch(); setRoleTarget(null); }
   };
 
+  const deleteUser = async (userId: number) => {
+    if (!confirm("Delete this user and all related data permanently?")) return;
+    try {
+      const r = await customFetchRaw(`/api/admin/users/${userId}`, {
+        method: "DELETE", headers: getAuthHeaders(),
+      });
+      if (r.ok) {
+        toast({ title: "User deleted" });
+        users.refetch();
+        rooms.refetch();
+        contracts.refetch();
+        verifications.refetch();
+        stats.refetch();
+      } else {
+        const error = await r.json().catch(() => null);
+        toast({ title: "Failed to delete user", description: error?.message || "Unknown error", variant: "destructive" });
+      }
+    } catch (err) {
+      toast({ title: "Failed to delete user", description: "Network error", variant: "destructive" });
+    }
+  };
+
   const verifyRoom = async (roomId: number) => {
     const r = await customFetchRaw(`/api/admin/rooms/${roomId}/verify`, {
       method: "PATCH",
@@ -705,6 +727,14 @@ export default function AdminDashboard() {
                                 className="flex items-center gap-1.5 text-xs bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-lg font-medium transition-colors">
                                 <Home size={13} /> View Rooms
                               </button>
+                            )}
+                            {user?.id !== u.id ? (
+                              <button onClick={() => deleteUser(u.id)}
+                                className="flex items-center gap-1.5 text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-semibold transition-colors">
+                                <Trash2 size={12} /> Delete
+                              </button>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-xs bg-muted/20 text-muted-foreground px-3 py-1.5 rounded-lg">You</span>
                             )}
                             <AnimatePresence>
                               {roleTarget === u.id && (

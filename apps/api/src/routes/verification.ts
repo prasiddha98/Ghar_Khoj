@@ -4,6 +4,7 @@ import { verificationDocsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { authRequired, requireRole, type AuthedRequest } from "../middlewares/auth";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { safeParseInt } from "../lib/http";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -16,6 +17,36 @@ router.post("/verification", authRequired, async (req: AuthedRequest, res) => {
   try {
     console.log('Verification request body:', req.body);
     console.log('User from auth:', req.user);
+
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
+    }
+
+    const [currentUser] = await db
+      .select({ firstName: usersTable.firstName, email: usersTable.email })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId));
+
+    if (!currentUser) {
+      return res.status(404).json({ error: 'not_found', message: 'User not found' });
+    }
+
+    if (!currentUser.email || !currentUser.email.trim()) {
+      return res.status(400).json({
+        error: 'validation_error',
+        message: 'Email is required on your account before submitting verification.',
+        field: 'email',
+      });
+    }
+
+    if (!currentUser.firstName || !currentUser.firstName.trim()) {
+      return res.status(400).json({
+        error: 'validation_error',
+        message: 'Name is required on your account before submitting verification.',
+        field: 'firstName',
+      });
+    }
 
     const {
       docType,
@@ -116,7 +147,6 @@ router.post("/verification", authRequired, async (req: AuthedRequest, res) => {
     }
 
     // CRITICAL FIX: Force userId from authenticated user (prevent submitting for others)
-    const userId = req.user!.id;
     console.log('Using userId:', userId);
 
     const [existing] = await db
@@ -266,7 +296,7 @@ router.post(
   requireRole(["admin"]),
   async (req: AuthedRequest, res) => {
     try {
-      const docId = parseInt(req.params.docId);
+      const docId = safeParseInt(req.params.docId);
 
       if (Number.isNaN(docId)) {
         return res.status(400).json({
@@ -327,7 +357,7 @@ router.post(
   requireRole(["admin"]),
   async (req: AuthedRequest, res) => {
     try {
-      const docId = parseInt(req.params.docId);
+      const docId = safeParseInt(req.params.docId);
       const { note } = req.body;
 
       if (Number.isNaN(docId)) {

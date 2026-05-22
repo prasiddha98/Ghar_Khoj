@@ -53,7 +53,7 @@ export default function KhaltiCallbackPage() {
         if (response.success) {
           setStatus("success");
           setMessage(response.message || "Payment successful! Contract signed.");
-          toast({ title: "Payment confirmed", description: response.message || "Khalti payment has been verified.", variant: "success" });
+          toast({ title: "Payment confirmed", description: response.message || "Khalti payment has been verified." });
           setTimeout(() => setLocation(`/contracts/${id}`), 3500);
         } else {
           setStatus("error");

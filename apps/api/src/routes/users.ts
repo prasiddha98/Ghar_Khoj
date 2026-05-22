@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { authRequired, requireSelfParam, type AuthedRequest } from "../middlewares/auth";
+import { safeParseInt } from "../lib/http";
 
 function stripPassword(user: Record<string, unknown>) {
 
@@ -23,7 +24,7 @@ function parseUpdateUser(body: Record<string, unknown>) {
 
 router.get("/users/:id", async (req, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const [user] = await db.select({
       id: usersTable.id,
       firstName: usersTable.firstName,
@@ -63,7 +64,7 @@ router.post("/users", async (req, res) => {
 
 router.patch("/users/:id", authRequired, requireSelfParam("id"), async (req: AuthedRequest, res) => { 
   try {
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const data = parseUpdateUser(req.body);
     const [user] = await db.update(usersTable).set(data).where(eq(usersTable.id, id)).returning();
     if (!user) {

@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { roomsTable, insertRoomSchema, contractsTable } from "@workspace/db";
 import { eq, and, gte, lte, sql, desc, or, inArray } from "drizzle-orm";
 import { authRequired, requireSelfParam, type AuthedRequest } from "../middlewares/auth";
+import { safeParseInt } from "../lib/http";
 
 
 const router: IRouter = Router();
@@ -68,7 +69,7 @@ router.get("/rooms", async (req, res) => {
 router.get("/rooms/:id", async (req, res) => {
   try {
     await refreshRoomAvailability();
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const [room] = await db.select().from(roomsTable).where(eq(roomsTable.id, id));
     if (!room) {
       return res.status(404).json({ error: "not_found", message: "Room not found" });
@@ -113,7 +114,7 @@ async function roomHasActiveContract(roomId: number) {
 router.get("/rooms/owner/:ownerId", authRequired, requireSelfParam("ownerId"), async (req: AuthedRequest, res) => {
   try {
     await refreshRoomAvailability();
-    const ownerId = parseInt(req.params.ownerId);
+    const ownerId = safeParseInt(req.params.ownerId);
     const rooms = await db.select().from(roomsTable).where(eq(roomsTable.ownerId, ownerId));
     const roomIds = rooms.map((room) => room.id);
     const activeContracts = roomIds.length > 0
@@ -146,7 +147,7 @@ router.patch("/rooms/:id", authRequired, async (req: AuthedRequest, res) => {
   // authorization: only the room owner can update
 
   try {
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const allowed = ["title", "description", "price", "roomType", "tenantType", "parking", "amenities", "photos", "isAvailable", "nearbyLandmarks"] as const;
     const update: Record<string, unknown> = {};
     for (const key of allowed) {
@@ -181,7 +182,7 @@ router.patch("/rooms/:id", authRequired, async (req: AuthedRequest, res) => {
 
 router.delete("/rooms/:id", authRequired, async (req: AuthedRequest, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     if (Number.isNaN(id)) return res.status(400).json({ error: "validation_error", message: "Invalid id" });
 
     const [room] = await db.select().from(roomsTable).where(eq(roomsTable.id, id));
@@ -193,13 +194,11 @@ router.delete("/rooms/:id", authRequired, async (req: AuthedRequest, res) => {
     }
 
     await db.delete(roomsTable).where(eq(roomsTable.id, id));
-    res.status(204).send();
+    return res.status(204).send();
   } catch (err) {
-
     req.log.error({ err }, "Error deleting room");
-    res.status(500).json({ error: "internal_error", message: "Failed to delete room" });
+    return res.status(500).json({ error: "internal_error", message: "Failed to delete room" });
   }
 });
 
 export default router;
-

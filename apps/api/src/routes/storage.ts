@@ -43,7 +43,7 @@ router.put(
       return res.json({ objectPath });
     } catch (error) {
       console.error("Error uploading file to Cloudinary", error);
-      res.status(500).json({ error: "Failed to upload file" });
+      return res.status(500).json({ error: "Failed to upload file" });
     }
   },
 );

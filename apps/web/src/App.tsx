@@ -36,7 +36,7 @@ const queryClient = new QueryClient({
 });
 
 // -------------------- Guards --------------------
-function ProtectedRoute({ children }: { children: JSX.Element }) {
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isRealUser, isLoading, user } = useAuth();
 
   if (isLoading) {
@@ -50,7 +50,7 @@ function ProtectedRoute({ children }: { children: JSX.Element }) {
   return children;
 }
 
-function VerifiedRoute({ children }: { children: JSX.Element }) {
+function VerifiedRoute({ children }: { children: React.ReactNode }) {
   const { isRealUser, isLoading, user } = useAuth();
   const isVerified = user?.isVerified ?? false;
 
@@ -85,7 +85,7 @@ function VerifiedRoute({ children }: { children: JSX.Element }) {
   return children;
 }
 
-function AdminRoute({ children }: { children: JSX.Element }) {
+function AdminRoute({ children }: { children: React.ReactNode }) {
   const { isRealUser, isLoading, isAdmin } = useAuth();
 
   if (isLoading) {

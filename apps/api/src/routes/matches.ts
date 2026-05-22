@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { matchesTable, roomsTable, usersTable, contractsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { authRequired, type AuthedRequest } from "../middlewares/auth";
+import { safeParseInt } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -115,7 +116,7 @@ router.post("/matches", authRequired, async (req: AuthedRequest, res) => {
  */
 router.get("/matches/tenant/:tenantId", authRequired, async (req: AuthedRequest, res) => {
   try {
-    const tenantIdParam = parseInt(req.params.tenantId);
+    const tenantIdParam = safeParseInt(req.params.tenantId);
 
     if (Number.isNaN(tenantIdParam)) {
       return res.status(400).json({
@@ -136,7 +137,7 @@ router.get("/matches/tenant/:tenantId", authRequired, async (req: AuthedRequest,
       .where(eq(matchesTable.tenantId, tenantIdParam));
 
     const enriched = await Promise.all(
-      matches.map(async (m) => {
+      matches.map(async (m: any) => {
         const [room] = await db.select().from(roomsTable)
           .where(eq(roomsTable.id, m.roomId));
         const [owner] = await db.select().from(usersTable)
@@ -173,7 +174,7 @@ router.get("/matches/tenant/:tenantId", authRequired, async (req: AuthedRequest,
  */
 router.get("/matches/owner/:ownerId", authRequired, async (req: AuthedRequest, res) => {
   try {
-    const ownerIdParam = parseInt(req.params.ownerId);
+    const ownerIdParam = safeParseInt(req.params.ownerId);
 
     if (Number.isNaN(ownerIdParam)) {
       return res.status(400).json({
@@ -194,7 +195,7 @@ router.get("/matches/owner/:ownerId", authRequired, async (req: AuthedRequest, r
       .where(eq(matchesTable.ownerId, ownerIdParam));
 
     const enriched = await Promise.all(
-      matches.map(async (m) => {
+      matches.map(async (m: any) => {
         const [room] = await db.select().from(roomsTable)
           .where(eq(roomsTable.id, m.roomId));
         const [tenant] = await db.select().from(usersTable)
@@ -231,7 +232,7 @@ router.get("/matches/owner/:ownerId", authRequired, async (req: AuthedRequest, r
  */
 router.patch("/matches/:id/respond", authRequired, async (req: AuthedRequest, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const { decision } = req.body;
 
     if (Number.isNaN(id)) {
@@ -328,8 +329,8 @@ router.patch("/matches/:id/respond", authRequired, async (req: AuthedRequest, re
  */
 router.get("/matches/participants/:tenantId/:ownerId", authRequired, async (req: AuthedRequest, res) => {
   try {
-    const tenantId = parseInt(req.params.tenantId);
-    const ownerId = parseInt(req.params.ownerId);
+    const tenantId = safeParseInt(req.params.tenantId);
+    const ownerId = safeParseInt(req.params.ownerId);
 
     if (Number.isNaN(tenantId) || Number.isNaN(ownerId)) {
       return res.status(400).json({

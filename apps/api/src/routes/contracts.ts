@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { contractsTable, usersTable, roomsTable, matchesTable } from "@workspace/db";
 import { eq, or, desc } from "drizzle-orm";
 import { authRequired, requireSelfParam, type AuthedRequest } from "../middlewares/auth";
+import { safeParseInt } from "../lib/http";
 
 const KHALTI_SECRET_KEY = process.env.KHALTI_SECRET_KEY || "";
 const KHALTI_ENV = (process.env.KHALTI_ENV || "development").toLowerCase();
@@ -107,7 +108,7 @@ router.post("/contracts", authRequired, async (req: AuthedRequest, res) => {
 
 router.get("/contracts/match/:matchId", async (req, res) => {
   try {
-    const matchId = parseInt(req.params.matchId);
+    const matchId = safeParseInt(req.params.matchId);
     const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.matchId, matchId));
     if (!contract) return res.status(404).json({ error: "not_found", message: "Contract not found" });
     return res.json(contract);
@@ -119,7 +120,7 @@ router.get("/contracts/match/:matchId", async (req, res) => {
 
 router.get("/contracts/:id", authRequired, async (req: AuthedRequest, res) => {
   try {
-    const contractId = parseInt(req.params.id);
+    const contractId = safeParseInt(req.params.id);
     const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.id, contractId));
     
     if (!contract) {
@@ -152,12 +153,12 @@ router.get("/contracts/:id", authRequired, async (req: AuthedRequest, res) => {
 
 router.get("/contracts/user/:userId", authRequired, requireSelfParam("userId"), async (req: AuthedRequest, res) => {
   try {
-    const userId = parseInt(req.params.userId);
+    const userId = safeParseInt(req.params.userId);
     const contracts = await db.select().from(contractsTable)
       .where(or(eq(contractsTable.tenantId, userId), eq(contractsTable.ownerId, userId)))
       .orderBy(desc(contractsTable.createdAt));
 
-    const enriched = await Promise.all(contracts.map(async (c) => {
+    const enriched = await Promise.all(contracts.map(async (c: any) => {
       const [tenant] = await db.select().from(usersTable).where(eq(usersTable.id, c.tenantId));
       const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, c.ownerId));
       const [room] = await db.select().from(roomsTable).where(eq(roomsTable.id, c.roomId));
@@ -178,7 +179,7 @@ router.get("/contracts/user/:userId", authRequired, requireSelfParam("userId"), 
 
 router.patch("/contracts/:id/sign", authRequired, async (req: AuthedRequest, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const { role, signature } = req.body;
 
     if (!["tenant", "owner"].includes(role) || !signature?.trim()) {
@@ -234,7 +235,7 @@ router.post("/contracts/:id/khalti/initiate", authRequired, async (req: AuthedRe
       return res.status(401).json({ error: "unauthorized", message: "Missing auth" });
     }
 
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.id, id));
     if (!contract) return res.status(404).json({ error: "not_found", message: "Contract not found" });
 
@@ -303,7 +304,7 @@ router.post("/contracts/:id/khalti/verify", authRequired, async (req: AuthedRequ
       return res.status(401).json({ success: false, message: "Missing auth" });
     }
 
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const { pidx } = req.body;
 
     if (!pidx || typeof pidx !== "string") {
@@ -369,7 +370,7 @@ router.post("/contracts/:id/khalti/verify", authRequired, async (req: AuthedRequ
 
 router.patch("/contracts/:id/verify", authRequired, async (req: AuthedRequest, res) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = safeParseInt(req.params.id);
     const { decision, adminNote } = req.body;
 
     // SECURITY: Check if user is admin
@@ -418,7 +419,7 @@ router.get("/admin/contracts", authRequired, async (req: AuthedRequest, res) => 
 
     const contracts = await db.select().from(contractsTable).orderBy(desc(contractsTable.createdAt));
 
-    const enriched = await Promise.all(contracts.map(async (c) => {
+    const enriched = await Promise.all(contracts.map(async (c: any) => {
       const [tenant] = await db.select().from(usersTable).where(eq(usersTable.id, c.tenantId));
       const [owner] = await db.select().from(usersTable).where(eq(usersTable.id, c.ownerId));
       const [room] = await db.select().from(roomsTable).where(eq(roomsTable.id, c.roomId));
@@ -440,9 +441,10 @@ router.get("/admin/contracts", authRequired, async (req: AuthedRequest, res) => 
 router.post("/contracts/:contractId/pdf-upload-url", authRequired, async (req: AuthedRequest, res) => {
   try {
     const { contractId } = req.params;
-    
+    const contractIdNum = safeParseInt(contractId);
+
     // Verify the contract exists and the user has access
-    const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.id, parseInt(contractId)));
+    const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.id, contractIdNum));
     if (!contract) {
       return res.status(404).json({ error: "not_found", message: "Contract not found" });
     }
@@ -464,13 +466,14 @@ router.post("/contracts/:contractId/pdf-store-url", authRequired, async (req: Au
   try {
     const { contractId } = req.params;
     const { objectPath } = req.body;
+    const contractIdNum = safeParseInt(contractId);
     
     if (!objectPath) {
       return res.status(400).json({ error: "validation_error", message: "objectPath required" });
     }
     
     // Verify the contract exists and the user has access
-    const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.id, parseInt(contractId)));
+    const [contract] = await db.select().from(contractsTable).where(eq(contractsTable.id, contractIdNum));
     if (!contract) {
       return res.status(404).json({ error: "not_found", message: "Contract not found" });
     }
@@ -485,7 +488,7 @@ router.post("/contracts/:contractId/pdf-store-url", authRequired, async (req: Au
 
     const [updated] = await db.update(contractsTable)
       .set({ contractPdfUrl: normalizedObjectPath })
-      .where(eq(contractsTable.id, parseInt(contractId)))
+      .where(eq(contractsTable.id, contractIdNum))
       .returning();
     
     return res.json({ contractPdfUrl: updated.contractPdfUrl });

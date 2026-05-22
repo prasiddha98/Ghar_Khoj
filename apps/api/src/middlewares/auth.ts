@@ -1,13 +1,26 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 
-export interface AuthUser {
+declare global {
+  namespace Express {
+    interface User {
+      id: number;
+      role: string;
+      email?: string;
+      firstName?: string;
+    }
+  }
+}
+
+export interface AuthUser extends Express.User {
   id: number;
   role: string;
+  email?: string;
+  firstName?: string;
 }
 
 export interface AuthedRequest extends Request {
-  user?: AuthUser;
+  user: AuthUser;
 }
 
 const JWT_ALG = (process.env.JWT_ALG ?? "HS256") as jwt.Algorithm;

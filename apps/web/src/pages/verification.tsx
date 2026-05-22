@@ -81,6 +81,15 @@ export default function Verification() {
     // Clear previous errors
     setFieldErrors({});
 
+    if (!user?.firstName?.trim() || !user?.email?.trim()) {
+        const validationErrors: Record<string, string> = {};
+        if (!user?.firstName?.trim()) validationErrors.firstName = "Name is required in your profile.";
+        if (!user?.email?.trim()) validationErrors.email = "Email is required in your profile.";
+        setFieldErrors(validationErrors);
+        toast({ title: "Account details missing", description: "Name and email must be filled to submit verification.", variant: "destructive" });
+        return;
+      }
+
     if (!docNumber.trim() || !fullName.trim() || !dob || !issueDate) {
       toast({ title: "All fields are required", description: "Please fill in all identity details.", variant: "destructive" });
       return;
@@ -204,6 +213,29 @@ export default function Verification() {
       </div>
 
       <div className="bg-white rounded-2xl border border-border shadow-sm divide-y divide-border">
+        <div className="p-6 space-y-5">
+          <h3 className="font-semibold text-foreground mb-1">Account Details</h3>
+          <div>
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">Name *</label>
+              <Input
+                value={user?.firstName ?? ""}
+                disabled
+                className={`rounded-xl ${fieldErrors.firstName ? 'border-red-500' : ''}`}
+              />
+              {fieldErrors.firstName && <p className="text-xs text-red-600 mt-1">{fieldErrors.firstName}</p>}
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-foreground mb-1.5 block">Email *</label>
+            <Input
+              type="email"
+              value={user?.email ?? ""}
+              disabled
+              className={`rounded-xl ${fieldErrors.email ? 'border-red-500' : ''}`}
+            />
+            {fieldErrors.email && <p className="text-xs text-red-600 mt-1">{fieldErrors.email}</p>}
+          </div>
+        </div>
+
         {/* Document type */}
         <div className="p-6">
           <h3 className="font-semibold text-foreground mb-4 flex items-center gap-2"><FileText size={16} /> Document Type</h3>

@@ -51,7 +51,7 @@ const OWNER_CAPABILITIES = [
 
 export default function OwnerDashboard() {
   const { user, userId, isOwner } = useAuth();
-  const { rooms, loading, refetch, setRooms } = useOwnerRooms(userId);
+  const { rooms, loading, refetch, setRooms } = useOwnerRooms(userId ?? 0);
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"listings" | "capabilities">("listings");
 
