@@ -227,7 +227,7 @@ export function buildRecommendationResults(options: {
   const viewedRoomIds = interactions
     .filter((i) => i.userId === userId && i.type === "view")
     .map((i) => i.roomId);
-
+console.log("User preferred city:", userPreferredCity);
   const scored = rooms.map((room) => {
     if (!matchesTenantPreferences(room, tenantPref, userPreferredCity) || !matchesRoomFilters(room, filters)) {
       return {
