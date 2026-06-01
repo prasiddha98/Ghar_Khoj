@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 /**
  * Hook to fetch user's visited room types
- * Returns the most common room type the user has viewed
+ * Returns the most common room types the user has viewed
  */
 export function useUserVisitedRoomTypes() {
   const { userId } = useAuth();
@@ -16,34 +16,64 @@ export function useUserVisitedRoomTypes() {
     const fetchVisitedRoomTypes = async () => {
       try {
         setIsLoading(true);
-        // Fetch user interactions (view type)
-        const response = await fetch(`/api/interactions/user/${userId}?type=view`, {
+        
+        // Step 1: Fetch user interactions (view type)
+        const interactionsResponse = await fetch(`/api/interactions/user/${userId}?type=view`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
           },
         });
 
-        if (!response.ok) {
-          console.error("Failed to fetch interactions:", response.status);
+        if (!interactionsResponse.ok) {
+          console.error("Failed to fetch interactions:", interactionsResponse.status);
           setVisitedRoomTypes([]);
           return;
         }
 
-        const data = await response.json();
-        const interactions = data.data || data || [];
+        const interactionsData = await interactionsResponse.json();
+        const interactions = interactionsData.interactions || [];
 
-        // Count room types from interactions
+        if (!interactions.length) {
+          setVisitedRoomTypes([]);
+          return;
+        }
+
+        // Step 2: Extract unique room IDs from interactions
+        const roomIds = [...new Set(interactions.map((i: any) => i.roomId))];
+
+        // Step 3: Fetch room details for those rooms
+        const roomsResponse = await fetch(`/api/rooms?ids=${roomIds.join(",")}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!roomsResponse.ok) {
+          console.error("Failed to fetch rooms:", roomsResponse.status);
+          setVisitedRoomTypes([]);
+          return;
+        }
+
+        const roomsData = await roomsResponse.json();
+        const rooms = roomsData.rooms || [];
+
+        // Step 4: Create a map of roomId -> room for quick lookup
+        const roomMap = new Map(rooms.map((r: any) => [r.id, r]));
+
+        // Step 5: Count room types from interactions using room data
         const roomTypeMap = new Map<string, number>();
 
         for (const interaction of interactions) {
-          if (interaction.room && interaction.room.roomType) {
-            const roomType = interaction.room.roomType;
+          const room = roomMap.get(interaction.roomId);
+          if (room && room.roomType) {
+            const roomType = room.roomType;
             roomTypeMap.set(roomType, (roomTypeMap.get(roomType) || 0) + 1);
           }
         }
 
-        // Sort by frequency and get room types
+        // Step 6: Sort by frequency and get room types
         const sortedRoomTypes = Array.from(roomTypeMap.entries())
           .sort(([, countA], [, countB]) => countB - countA)
           .map(([roomType]) => roomType);
