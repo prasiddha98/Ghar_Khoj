@@ -44,6 +44,7 @@ export interface RecommendationResult {
   room: Room;
   distanceKm: number;
   contentScore: number;
+  typeScore: number;
   knnScore: number;
   collabScore: number;
   finalScore: number;
@@ -76,6 +77,34 @@ export function calculateDistanceScore(distanceKm: number): number {
 
 export function calculateContentScore(room: Room): number {
   return (room.parking ? 0.2 : 0) + (room.isAvailable ? 0.5 : 0) + 0.3;
+}
+
+export function calculateRoomTypePreferenceScore(
+  room: Room,
+  allRooms: Room[],
+  viewedRoomIds: number[]
+): number {
+  if (viewedRoomIds.length === 0) {
+    return 0;
+  }
+
+  // Get all viewed rooms
+  const viewedRooms = allRooms.filter((r) => viewedRoomIds.includes(r.id));
+  
+  // Count room types user has viewed
+  const roomTypeCount: Record<string, number> = {};
+  viewedRooms.forEach((r) => {
+    roomTypeCount[r.roomType] = (roomTypeCount[r.roomType] || 0) + 1;
+  });
+
+  // If user viewed this room type, boost the score
+  if (roomTypeCount[room.roomType]) {
+    // Higher boost for more interactions with this type
+    const preference = Math.min(1, roomTypeCount[room.roomType] / viewedRoomIds.length);
+    return preference;
+  }
+
+  return 0;
 }
 
 export function calculateKnnScore(
@@ -235,6 +264,7 @@ console.log("User preferred city:", userPreferredCity);
         room,
         distanceKm: 0,
         contentScore: 0,
+        typeScore: 0,
         knnScore: 0,
         collabScore: 0,
         finalScore: Number.NEGATIVE_INFINITY,
@@ -248,21 +278,24 @@ console.log("User preferred city:", userPreferredCity);
       : 0;
     const distanceScore = calculateDistanceScore(distanceKm);
     const contentScore = calculateContentScore(room);
+    const typeScore = calculateRoomTypePreferenceScore(room, rooms, viewedRoomIds);
     const knnScore = calculateKnnScore(room, rooms, viewedRoomIds);
     const collabScore = calculateCollaborativeScore(room, users, interactions, userId);
 
     const finalScore =
-      distanceScore * 0.25 +
-      contentScore * 0.3 +
-      knnScore * 0.25 +
-      collabScore * 0.2 +
-      (tenantPref?.parking === true && room.parking ? 0.2 : 0);
+      distanceScore * 0.35 +
+      typeScore * 0.25 +
+      contentScore * 0.2 +
+      knnScore * 0.1 +
+      collabScore * 0.1 +
+      (tenantPref?.parking === true && room.parking ? 0.1 : 0);
 
     return {
       roomId: room.id,
       room,
       distanceKm,
       contentScore,
+      typeScore,
       knnScore,
       collabScore,
       finalScore,
