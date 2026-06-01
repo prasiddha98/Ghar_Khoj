@@ -35,49 +35,47 @@ export function useUserVisitedRoomTypes() {
         const interactions = interactionsData.interactions || [];
 
         if (!interactions.length) {
+          console.log("No interactions found");
           setVisitedRoomTypes([]);
           return;
         }
 
-        // Step 2: Extract unique room IDs from interactions
+        console.log("Fetched interactions:", interactions);
+
+        // Step 2: Extract unique room IDs
         const roomIds = [...new Set(interactions.map((i: any) => i.roomId))];
+        console.log("Room IDs to fetch:", roomIds);
 
-        // Step 3: Fetch room details for those rooms
-        const roomsResponse = await fetch(`/api/rooms?ids=${roomIds.join(",")}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+        // Step 3: Fetch room details for each room ID in parallel
+        const roomFetchPromises = roomIds.map(roomId =>
+          fetch(`/api/rooms/${roomId}`)
+            .then(res => res.json())
+            .then(data => data.room || data)
+            .catch(err => {
+              console.error(`Failed to fetch room ${roomId}:`, err);
+              return null;
+            })
+        );
 
-        if (!roomsResponse.ok) {
-          console.error("Failed to fetch rooms:", roomsResponse.status);
-          setVisitedRoomTypes([]);
-          return;
-        }
+        const rooms = await Promise.all(roomFetchPromises);
+        console.log("Fetched rooms:", rooms);
 
-        const roomsData = await roomsResponse.json();
-        const rooms = roomsData.rooms || [];
-
-        // Step 4: Create a map of roomId -> room for quick lookup
-        const roomMap = new Map(rooms.map((r: any) => [r.id, r]));
-
-        // Step 5: Count room types from interactions using room data
+        // Step 4: Count room types from the fetched room data
         const roomTypeMap = new Map<string, number>();
 
-        for (const interaction of interactions) {
-          const room = roomMap.get(interaction.roomId);
+        rooms.forEach(room => {
           if (room && room.roomType) {
             const roomType = room.roomType;
             roomTypeMap.set(roomType, (roomTypeMap.get(roomType) || 0) + 1);
           }
-        }
+        });
 
-        // Step 6: Sort by frequency and get room types
+        // Step 5: Sort by frequency and get room types
         const sortedRoomTypes = Array.from(roomTypeMap.entries())
           .sort(([, countA], [, countB]) => countB - countA)
           .map(([roomType]) => roomType);
 
+        console.log("Visited room types (sorted by frequency):", sortedRoomTypes);
         setVisitedRoomTypes(sortedRoomTypes);
       } catch (error) {
         console.error("Error fetching visited room types:", error);
