@@ -13,9 +13,10 @@ interface RoomCardProps {
   recommendationTag?: string;
   distanceKm?: number;
   className?: string;
+  showDistance?: boolean;
 }
 
-export function RoomCard({ room, recommendationScore, recommendationTag, distanceKm, className }: RoomCardProps) {
+export function RoomCard({ room, recommendationScore, recommendationTag, distanceKm, className, showDistance = true }: RoomCardProps) {
   const { userId, isVerified } = useAuth();
   const { toast } = useToast();
   const [isSaved, setIsSaved] = useState(false);
@@ -129,7 +130,7 @@ export function RoomCard({ room, recommendationScore, recommendationTag, distanc
             </div>
             {isVerified && (
               <div className="flex items-center gap-2">
-                {distanceKm !== undefined && (
+                {showDistance && distanceKm !== undefined && (
                   <div className="text-xs font-medium text-muted-foreground bg-blue-50 dark:bg-blue-950 px-2 py-1 rounded-md border border-blue-200 dark:border-blue-800">
                     📍 {distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`}
                   </div>

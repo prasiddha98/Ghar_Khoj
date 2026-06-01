@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { useGetRooms, useGetRecommendations, type RecommendationResult } from "@workspace/api-client-react";
 import { RoomCard } from "@/components/room-card";
 import { useAuth } from "@/hooks/use-auth";
+import { useUserVisitedRoomTypes } from "@/hooks/use-user-visited-room-types";
+import { sortRecommendations } from "@/lib/sort-recommendations";
 import { motion } from "framer-motion";
 
 const popularCities = ["Kathmandu", "Lalitpur", "Bhaktapur", "Pokhara", "Biratnagar"];
@@ -21,6 +23,7 @@ export default function Home() {
   const { data: roomsData, isLoading: isRoomsLoading } = useGetRooms({ limit: 6, isVerified: true });
   const recommendationMutation = useGetRecommendations();
   const { user, userId, isAuthenticated, isVerified } = useAuth();
+  const { visitedRoomTypes } = useUserVisitedRoomTypes();
 
   const getRandomNepalLocation = () => {
     const latitude = 26 + Math.random() * 3; // roughly Nepal bounds
@@ -32,7 +35,11 @@ export default function Home() {
     recommendationMutation.mutate(
       { data: { userId: userId ?? 0, latitude, longitude, limit: 6 } },
       {
-        onSuccess: (data) => setRecommendations(data.results),
+        onSuccess: (data) => {
+          // Sort recommendations based on visited room types and other criteria
+          const sortedRecommendations = sortRecommendations(data.results, visitedRoomTypes);
+          setRecommendations(sortedRecommendations);
+        }
       }
     );
   };
@@ -179,7 +186,7 @@ export default function Home() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {recommendations.map((result, i) => (
               <motion.div key={result.roomId} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: i * 0.1 }}>
-                <RoomCard room={result.room} recommendationScore={result.finalScore} recommendationTag={result.tag} distanceKm={result.distanceKm} />
+                <RoomCard room={result.room} recommendationScore={result.finalScore} recommendationTag={result.tag} distanceKm={result.distanceKm} showDistance={false} />
               </motion.div>
             ))}
           </div>

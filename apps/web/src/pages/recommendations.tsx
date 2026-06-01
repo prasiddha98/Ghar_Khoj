@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useGetRecommendations } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useUserVisitedRoomTypes } from "@/hooks/use-user-visited-room-types";
+import { sortRecommendations } from "@/lib/sort-recommendations";
 import { Sparkles, Compass, Lock } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -10,6 +12,7 @@ import { BackButton } from "@/components/back-button";
 
 export default function Recommendations() {
   const { userId, isVerified, user } = useAuth();
+  const { visitedRoomTypes } = useUserVisitedRoomTypes();
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
 
@@ -148,7 +151,7 @@ export default function Recommendations() {
         </div>
       ) : getRecommendationsMutation.isSuccess && getRecommendationsMutation.data.results.length > 0 ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
-          {getRecommendationsMutation.data.results.map((result, i) => (
+          {sortRecommendations(getRecommendationsMutation.data.results, visitedRoomTypes).map((result, i) => (
             <motion.div
               key={result.roomId}
               initial={{ opacity: 0, scale: 0.95 }}
