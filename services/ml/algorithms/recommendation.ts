@@ -75,8 +75,34 @@ export function calculateDistanceScore(distanceKm: number): number {
   return Math.max(0, 1 - distanceKm / 50);
 }
 
-export function calculateContentScore(room: Room): number {
-  return (room.parking ? 0.2 : 0) + (room.isAvailable ? 0.5 : 0) + 0.3;
+export function calculateContentScore(
+  room: Room,
+  allRooms: Room[],
+  viewedRoomIds: number[]
+): number {
+  // Base score for availability (critical amenity)
+  const availabilityScore = room.isAvailable ? 0.5 : 0;
+  
+  // If user has viewed rooms, match amenities they showed interest in
+  if (viewedRoomIds.length === 0) {
+    // No history: default scoring
+    return availabilityScore + (room.parking ? 0.2 : 0) + 0.3;
+  }
+
+  // Analyze what amenities user preferred based on viewed rooms
+  const viewedRooms = allRooms.filter((r) => viewedRoomIds.includes(r.id));
+  const parkingPreferenceCount = viewedRooms.filter((r) => r.parking).length;
+  const availabilityPreferenceCount = viewedRooms.filter((r) => r.isAvailable).length;
+
+  // User preference percentages
+  const userLikesParking = parkingPreferenceCount / viewedRoomIds.length;
+  const userLikesAvailable = availabilityPreferenceCount / viewedRoomIds.length;
+
+  // Score based on user's preferences
+  const parkingScore = room.parking ? userLikesParking * 0.3 : 0;
+  const availableScore = room.isAvailable ? userLikesAvailable * 0.7 : 0;
+
+  return Math.min(1, availabilityScore + parkingScore + availableScore);
 }
 
 export function calculateRoomTypePreferenceScore(
@@ -277,7 +303,7 @@ console.log("User preferred city:", userPreferredCity);
       ? haversineDistance(latitude, longitude, room.latitude, room.longitude)
       : 0;
     const distanceScore = calculateDistanceScore(distanceKm);
-    const contentScore = calculateContentScore(room);
+    const contentScore = calculateContentScore(room, rooms, viewedRoomIds);
     const typeScore = calculateRoomTypePreferenceScore(room, rooms, viewedRoomIds);
     const knnScore = calculateKnnScore(room, rooms, viewedRoomIds);
     const collabScore = calculateCollaborativeScore(room, users, interactions, userId);
