@@ -974,6 +974,8 @@ components:
           type: number
         collabScore:
           type: number
+        preferenceScore:
+          type: number
         finalScore:
           type: number
         tag:
@@ -988,6 +990,7 @@ components:
         - typeScore
         - knnScore
         - collabScore
+        - preferenceScore
         - finalScore
         - tag
 

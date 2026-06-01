@@ -47,6 +47,7 @@ export interface RecommendationResult {
   typeScore: number;
   knnScore: number;
   collabScore: number;
+  preferenceScore: number;
   finalScore: number;
   tag: string;
   reason?: string;
@@ -103,6 +104,60 @@ export function calculateContentScore(
   const availableScore = room.isAvailable ? userLikesAvailable * 0.7 : 0;
 
   return Math.min(1, availabilityScore + parkingScore + availableScore);
+}
+
+export function calculatePreferenceMatchScore(
+  room: Room,
+  tenantPref?: TenantPreference | null
+): number {
+  if (!tenantPref) {
+    return 0.5; // Neutral score if no preferences
+  }
+
+  let matchScore = 0;
+  let totalFactors = 0;
+
+  // Room type preference
+  if (tenantPref.roomType) {
+    totalFactors++;
+    if (room.roomType === tenantPref.roomType) {
+      matchScore += 1;
+    }
+  }
+
+  // Tenant type preference
+  if (tenantPref.tenantType) {
+    totalFactors++;
+    if (room.tenantType === tenantPref.tenantType) {
+      matchScore += 1;
+    }
+  }
+
+  // Price range preference
+  if (tenantPref.minBudget !== null && tenantPref.minBudget !== undefined) {
+    totalFactors++;
+    if (room.price >= tenantPref.minBudget) {
+      matchScore += 0.5;
+    }
+  }
+
+  if (tenantPref.maxBudget !== null && tenantPref.maxBudget !== undefined) {
+    totalFactors++;
+    if (room.price <= tenantPref.maxBudget) {
+      matchScore += 0.5;
+    }
+  }
+
+  // Parking preference
+  if (tenantPref.parking !== null && tenantPref.parking !== undefined) {
+    totalFactors++;
+    if (room.parking === tenantPref.parking) {
+      matchScore += 1;
+    }
+  }
+
+  // Return normalized score (0-1)
+  return totalFactors > 0 ? Math.min(1, matchScore / totalFactors) : 0.5;
 }
 
 export function calculateRoomTypePreferenceScore(
@@ -293,6 +348,7 @@ console.log("User preferred city:", userPreferredCity);
         typeScore: 0,
         knnScore: 0,
         collabScore: 0,
+        preferenceScore: 0,
         finalScore: Number.NEGATIVE_INFINITY,
         tag: "Filtered",
         reason: "Does not match tenant preferences or filters",
@@ -305,16 +361,22 @@ console.log("User preferred city:", userPreferredCity);
     const distanceScore = calculateDistanceScore(distanceKm);
     const contentScore = calculateContentScore(room, rooms, viewedRoomIds);
     const typeScore = calculateRoomTypePreferenceScore(room, rooms, viewedRoomIds);
+    const preferenceScore = calculatePreferenceMatchScore(room, tenantPref);
     const knnScore = calculateKnnScore(room, rooms, viewedRoomIds);
     const collabScore = calculateCollaborativeScore(room, users, interactions, userId);
 
+    // Combined scoring:
+    // - Distance: 35% (haversine - closest rooms first)
+    // - Type + Preference: 25% (what user viewed + their filter preferences)
+    // - Content: 20% (amenities matching user history)
+    // - KNN: 10% (similar price/type rooms)
+    // - Collaborative: 10% (similar users' choices)
     const finalScore =
       distanceScore * 0.35 +
-      typeScore * 0.25 +
+      (typeScore * 0.5 + preferenceScore * 0.5) * 0.25 +
       contentScore * 0.2 +
       knnScore * 0.1 +
-      collabScore * 0.1 +
-      (tenantPref?.parking === true && room.parking ? 0.1 : 0);
+      collabScore * 0.1;
 
     return {
       roomId: room.id,
@@ -324,6 +386,7 @@ console.log("User preferred city:", userPreferredCity);
       typeScore,
       knnScore,
       collabScore,
+      preferenceScore,
       finalScore,
       tag: "Recommended",
       reason: room.isAvailable ? "Available now" : "Good match",
