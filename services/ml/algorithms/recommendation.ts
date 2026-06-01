@@ -410,9 +410,7 @@ export function buildRecommendationResults(options: {
 
   // Detect if user has a strong preference for a specific room type
   const dominantRoomType = getDominantRoomType(rooms, viewedRoomIds);
-  
-console.log("User preferred city:", userPreferredCity);
-console.log("User dominant room type:", dominantRoomType);
+
   const scored = rooms.map((room) => {
     if (!matchesTenantPreferences(room, tenantPref, userPreferredCity) || !matchesRoomFilters(room, filters)) {
       return {
@@ -442,44 +440,23 @@ console.log("User dominant room type:", dominantRoomType);
     const knnScore = calculateKnnScore(room, rooms, viewedRoomIds);
     const collabScore = calculateCollaborativeScore(room, users, interactions, userId);
 
-    // BOOST 1: If user has strong room type preference (viewed 2+ of same type),
-    // heavily boost matching rooms with strong haversine + content-based scoring
-    let dominantTypeBoost = 1;
-    if (dominantRoomType && room.roomType === dominantRoomType) {
-      dominantTypeBoost = 1.4; // 40% boost for matching dominant type
-    } else if (dominantRoomType && room.roomType !== dominantRoomType) {
-      dominantTypeBoost = 0.6; // 40% penalty for not matching dominant type
-    }
+    const matchingDominantType = dominantRoomType && room.roomType === dominantRoomType;
 
-    // BOOST 2: If user showed parking preference + room type match + has parking,
-    // give additional boost (rooms with parking appear before those without)
-    let parkingBoost = 1;
-    const viewedRooms = rooms.filter((r) => viewedRoomIds.includes(r.id));
-    const userPrefersParkingRooms = viewedRooms.filter((r) => r.parking).length / Math.max(viewedRoomIds.length, 1);
-    
-    if (dominantRoomType && room.roomType === dominantRoomType && userPrefersParkingRooms >= 0.3) {
-      // User views specific room type AND prefers parking
-      if (room.parking) {
-        parkingBoost = 1.3; // 30% boost for parking when user prefers it
-      } else {
-        parkingBoost = 0.75; // 25% penalty for no parking when user prefers it
-      }
-    }
+    const typePriority = matchingDominantType ? 1 : 0;
+    const preferredParking = rooms
+      .filter((r) => viewedRoomIds.includes(r.id))
+      .filter((r) => r.parking).length / Math.max(viewedRoomIds.length, 1);
+    const parkingBonus = room.parking && preferredParking >= 0.3 ? 0.05 : 0;
 
-    // Combined scoring:
-    // - Distance: 35% (haversine - closest rooms first)
-    // - Type + Preference: 25% (what user viewed + their filter preferences)
-    // - Content + Amenity: 25% (amenities matching user history - parking, availability)
-    // - KNN: 10% (similar price/type rooms)
-    // - Collaborative: 5% (similar users' choices)
-    // - BOOST 1: Room type matching gets enhanced if user has clear preference (1.4x or 0.6x)
-    // - BOOST 2: Parking preference boost when room type + parking match (1.3x) or no parking (0.75x)
-    const finalScore =
-      (distanceScore * 0.35 +
-      (typeScore * 0.5 + preferenceScore * 0.5) * 0.25 +
-      (contentScore * 0.5 + amenityScore * 0.5) * 0.25 +
+    const prioritizedScore =
+      distanceScore * 0.45 +
+      contentScore * 0.35 +
+      amenityScore * 0.1 +
       knnScore * 0.1 +
-      collabScore * 0.05) * dominantTypeBoost * parkingBoost;
+      collabScore * 0.05 +
+      parkingBonus;
+
+    const finalScore = Math.min(1, Math.max(0, prioritizedScore + typeScore * 0.05 + preferenceScore * 0.05 + typePriority * 0.1));
 
     return {
       roomId: room.id,
@@ -499,6 +476,32 @@ console.log("User dominant room type:", dominantRoomType);
 
   return scored
     .filter((result) => result.finalScore > Number.NEGATIVE_INFINITY)
-    .sort((left, right) => right.finalScore - left.finalScore)
+    .sort((left, right) => {
+      const leftDominant = dominantRoomType && left.room.roomType === dominantRoomType ? 1 : 0;
+      const rightDominant = dominantRoomType && right.room.roomType === dominantRoomType ? 1 : 0;
+      if (leftDominant !== rightDominant) {
+        return rightDominant - leftDominant;
+      }
+
+      const leftDistanceScore = calculateDistanceScore(left.distanceKm);
+      const rightDistanceScore = calculateDistanceScore(right.distanceKm);
+      if (leftDistanceScore !== rightDistanceScore) {
+        return rightDistanceScore - leftDistanceScore;
+      }
+
+      if (left.contentScore !== right.contentScore) {
+        return right.contentScore - left.contentScore;
+      }
+
+      if (left.knnScore !== right.knnScore) {
+        return right.knnScore - left.knnScore;
+      }
+
+      if (left.collabScore !== right.collabScore) {
+        return right.collabScore - left.collabScore;
+      }
+
+      return right.finalScore - left.finalScore;
+    })
     .slice(0, limit);
 }

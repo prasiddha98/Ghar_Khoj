@@ -3,7 +3,8 @@ import { useLocation } from "wouter";
 import { Search as SearchIcon, SlidersHorizontal, MapPin, X, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useGetRooms, RoomRoomType, RoomTenantType } from "@workspace/api-client-react";
+import { useGetRooms, RoomRoomType, RoomTenantType, useUpsertTenantPreferences } from "@workspace/api-client-react";
+import { useAuth } from "@/hooks/use-auth";
 import { RoomCard } from "@/components/room-card";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,8 @@ export default function SearchPage() {
     const c = getCityFromSearch();
     return c ? { city: c } : {};
   });
+  const { userId, isAuthenticated } = useAuth();
+  const upsertTenantPreferences = useUpsertTenantPreferences();
 
   // Sync when URL path changes (e.g. clicking a popular city from home page)
   useEffect(() => {
@@ -51,8 +54,30 @@ export default function SearchPage() {
     return params;
   };
 
+  const saveSearchPreferences = (cityValue: string) => {
+    if (!isAuthenticated || !userId) return;
+
+    const preferenceData: Record<string, unknown> = {};
+    if (cityValue.trim()) preferenceData.city = cityValue.trim();
+    if (roomType) preferenceData.roomType = roomType;
+    if (tenantType) preferenceData.tenantType = tenantType;
+    if (minPrice) preferenceData.minBudget = Number(minPrice);
+    if (maxPrice) preferenceData.maxBudget = Number(maxPrice);
+    if (parking) preferenceData.parking = true;
+
+    if (Object.keys(preferenceData).length > 0) {
+      upsertTenantPreferences.mutate({
+        userId,
+        data: preferenceData,
+      });
+    }
+  };
+
   const applyFilters = () => {
     const params = buildQueryParams();
+
+    saveSearchPreferences(city);
+
     setQueryParams(params);
     setShowFilters(false);
     const qs = city.trim() ? `?city=${encodeURIComponent(city.trim())}` : "";
@@ -121,6 +146,7 @@ export default function SearchPage() {
                 if (tenantType) params.tenantType = tenantType;
                 if (parking) params.parking = true;
                 setQueryParams(params);
+                saveSearchPreferences(c);
                 setLocation(`/search?city=${encodeURIComponent(c)}`);
               }}
               className={cn(
@@ -161,6 +187,7 @@ export default function SearchPage() {
             onClick={() => {
               setCity(c);
               setQueryParams({ city: c });
+              saveSearchPreferences(c);
               setLocation(`/search?city=${encodeURIComponent(c)}`);
             }}
             className={cn(

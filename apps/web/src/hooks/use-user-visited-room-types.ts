@@ -1,6 +1,6 @@
 import { useAuth } from "./use-auth";
 import { useEffect, useState } from "react";
-import { useGetRoom } from "@workspace/api-client-react";
+import { useGetUserInteractions } from "@workspace/api-client-react";
 
 /**
  * Hook to fetch user's visited room types
@@ -18,56 +18,35 @@ import { useGetRoom } from "@workspace/api-client-react";
 export function useUserVisitedRoomTypes() {
   const { userId } = useAuth();
   const [visitedRoomTypes, setVisitedRoomTypes] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingRoomTypes, setIsLoadingRoomTypes] = useState(false);
   const [roomIds, setRoomIds] = useState<number[]>([]);
 
-  // Step 1: Fetch interactions to get room IDs
+  const { data: interactionData, isLoading: interactionsLoading } = useGetUserInteractions(
+    userId ?? 0,
+    { type: "view" },
+  );
+
+  // Step 1: Use generated API hook to fetch user interactions with auth
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !interactionData?.interactions) {
+      setRoomIds([]);
+      return;
+    }
 
-    const fetchInteractions = async () => {
-      try {
-        setIsLoading(true);
-        
-        const response = await fetch(`/api/interactions/user/${userId}?type=view`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+    const interactions = interactionData.interactions;
+    const ids = Array.from(
+      new Map(
+        interactions
+          .sort((a: any, b: any) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          )
+          .map((i: any) => [i.roomId, i]),
+      ).values(),
+    ).map((i: any) => i.roomId);
 
-        if (!response.ok) {
-          console.error("Failed to fetch interactions:", response.status);
-          setRoomIds([]);
-          return;
-        }
-
-        const data = await response.json();
-        const interactions = data.interactions || [];
-        
-        // Extract unique room IDs, sorted by most recent first
-        const ids = Array.from(
-          new Map(
-            interactions
-              .sort((a: any, b: any) => 
-                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-              )
-              .map((i: any) => [i.roomId, i])
-          ).values()
-        ).map((i: any) => i.roomId);
-
-        console.log("Extracted room IDs from interactions:", ids);
-        setRoomIds(ids);
-      } catch (error) {
-        console.error("Error fetching interactions:", error);
-        setRoomIds([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchInteractions();
-  }, [userId]);
+    console.log("Extracted room IDs from interactions:", ids);
+    setRoomIds(ids);
+  }, [userId, interactionData]);
 
   // Step 2: Fetch room details in batches using React Query
   useEffect(() => {
@@ -78,6 +57,7 @@ export function useUserVisitedRoomTypes() {
 
     const fetchRoomTypesFromIds = async () => {
       try {
+        setIsLoadingRoomTypes(true);
         const roomTypeCount = new Map<string, number>();
 
         // Fetch room details for each room ID
@@ -128,11 +108,13 @@ export function useUserVisitedRoomTypes() {
       } catch (error) {
         console.error("Error fetching room types:", error);
         setVisitedRoomTypes([]);
+      } finally {
+        setIsLoadingRoomTypes(false);
       }
     };
 
     fetchRoomTypesFromIds();
   }, [roomIds]);
 
-  return { visitedRoomTypes, isLoading };
+  return { visitedRoomTypes, isLoading: interactionsLoading || isLoadingRoomTypes };
 }
