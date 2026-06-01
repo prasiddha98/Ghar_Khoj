@@ -10,25 +10,61 @@ import { BackButton } from "@/components/back-button";
 
 export default function Recommendations() {
   const { userId, isVerified, user } = useAuth();
-  
-  // Simulated geolocation for nearby suggestions
-  const mockLat = 27.7172; 
-  const mockLng = 85.3240; // Kathmandu coordinates
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
 
   const getRecommendationsMutation = useGetRecommendations();
 
+  // Fetch actual user location when page loads
   useEffect(() => {
-    if (isVerified && userId) {
+    if (!isVerified || !userId) return;
+
+    const fetchUserLocation = () => {
+      // Fallback: Default Kathmandu coordinates
+      const fallbackLatitude = 27.7172;
+      const fallbackLongitude = 85.3240;
+      
+      if (typeof navigator !== "undefined" && "geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setUserLocation({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            });
+          },
+          () => {
+            setGeoError("Unable to fetch your location. Using default Nepal location for distance calculations.");
+            setUserLocation({
+              latitude: fallbackLatitude,
+              longitude: fallbackLongitude,
+            });
+          },
+          { timeout: 8000 }
+        );
+      } else {
+        setUserLocation({
+          latitude: fallbackLatitude,
+          longitude: fallbackLongitude,
+        });
+      }
+    };
+
+    fetchUserLocation();
+  }, [isVerified, userId]);
+
+  // Fetch recommendations when user location is available
+  useEffect(() => {
+    if (isVerified && userId && userLocation) {
       getRecommendationsMutation.mutate({
         data: {
           userId,
-          latitude: mockLat,
-          longitude: mockLng,
+          latitude: userLocation.latitude,
+          longitude: userLocation.longitude,
           limit: 10
         }
       });
     }
-  }, [isVerified, userId]);
+  }, [isVerified, userId, userLocation]);
 
   // Check if user is logged in
   if (!user) {
@@ -80,7 +116,14 @@ export default function Recommendations() {
         <BackButton fallback="/" label="Back" className="" />
       </div>
 
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 md:p-12 mb-10 text-white shadow-2xl relative overflow-hidden">
+      {/* Geo Error Message */}
+      {geoError && (
+        <div className="mx-4 mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+          📍 {geoError}
+        </div>
+      )}
+
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 md:p-12 mb-10 text-white shadow-2xl relative overflow-hidden mx-4">
         <div className="absolute top-0 right-0 opacity-20 transform translate-x-10 -translate-y-10">
           <Compass size={250} />
         </div>
@@ -96,13 +139,13 @@ export default function Recommendations() {
       </div>
 
       {getRecommendationsMutation.isPending ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
           {[1, 2, 3].map(i => (
             <div key={i} className="bg-card rounded-2xl h-[340px] animate-pulse border border-border" />
           ))}
         </div>
       ) : getRecommendationsMutation.isSuccess && getRecommendationsMutation.data.results.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 px-4">
           {getRecommendationsMutation.data.results.map((result, i) => (
             <motion.div
               key={result.roomId}
@@ -114,16 +157,16 @@ export default function Recommendations() {
                 room={result.room} 
                 recommendationScore={result.finalScore}
                 recommendationTag={result.tag}
+                distanceKm={result.distanceKm}
               />
               <div className="mt-2 text-xs text-muted-foreground px-2 flex justify-between">
-                <span>📍 {result.distanceKm.toFixed(1)} km from your search</span>
                 <span>{result.reason || "High match score"}</span>
               </div>
             </motion.div>
           ))}
         </div>
       ) : (
-        <div className="text-center py-20 bg-white rounded-3xl border border-border shadow-sm">
+        <div className="text-center py-20 bg-white rounded-3xl border border-border shadow-sm mx-4">
           <Sparkles size={48} className="mx-auto text-muted-foreground mb-4 opacity-50" />
           <h3 className="text-xl font-bold text-foreground">Building your profile</h3>
           <p className="text-muted-foreground mt-2 max-w-md mx-auto">

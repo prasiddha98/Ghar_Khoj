@@ -178,7 +178,7 @@ export default function Home() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {recommendations.map((result, i) => (
               <motion.div key={result.roomId} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: i * 0.1 }}>
-                <RoomCard room={result.room} recommendationScore={result.finalScore} recommendationTag={result.tag} />
+                <RoomCard room={result.room} recommendationScore={result.finalScore} recommendationTag={result.tag} distanceKm={result.distanceKm} />
               </motion.div>
             ))}
           </div>
