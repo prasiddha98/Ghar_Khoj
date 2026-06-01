@@ -27,19 +27,21 @@ export default function Recommendations() {
       if (typeof navigator !== "undefined" && "geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
+            console.log("Geolocation success:", position.coords.latitude, position.coords.longitude);
             setUserLocation({
               latitude: position.coords.latitude,
               longitude: position.coords.longitude,
             });
           },
-          () => {
-            setGeoError("Unable to fetch your location. Using default Nepal location for distance calculations.");
+          (error) => {
+            console.log("Geolocation error:", error);
+            setGeoError("Unable to fetch your location. Using Kathmandu center for distance calculations.");
             setUserLocation({
               latitude: fallbackLatitude,
               longitude: fallbackLongitude,
             });
           },
-          { timeout: 8000 }
+          { timeout: 8000, enableHighAccuracy: true, maximumAge: 0 }
         );
       } else {
         setUserLocation({

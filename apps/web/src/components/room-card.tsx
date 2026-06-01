@@ -127,17 +127,22 @@ export function RoomCard({ room, recommendationScore, recommendationTag, distanc
               <span className="text-xl font-bold text-primary">{formatCurrency(room.price)}</span>
               <span className="text-xs text-muted-foreground font-medium"> /month</span>
             </div>
-            {isVerified && (distanceKm !== undefined ? (
-              <div className="text-xs font-medium text-muted-foreground bg-blue-50 dark:bg-blue-950 px-2 py-1 rounded-md border border-blue-200 dark:border-blue-800">
-                📍 {distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`}
+            {isVerified && (
+              <div className="flex items-center gap-2">
+                {distanceKm !== undefined && (
+                  <div className="text-xs font-medium text-muted-foreground bg-blue-50 dark:bg-blue-950 px-2 py-1 rounded-md border border-blue-200 dark:border-blue-800">
+                    📍 {distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`}
+                  </div>
+                )}
+                {recommendationScore !== undefined && recommendationScore !== null && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-bold text-secondary bg-secondary/10 px-2 py-1 rounded-md">
+                      {Math.round(recommendationScore * 100)}% Match
+                    </span>
+                  </div>
+                )}
               </div>
-            ) : (recommendationScore !== undefined && recommendationScore !== null && (
-              <div className="flex items-center gap-1">
-                <span className="text-xs font-bold text-secondary bg-secondary/10 px-2 py-1 rounded-md">
-                  {Math.round(recommendationScore * 100)}% Match
-                </span>
-              </div>
-            )))}
+            )}
           </div>
         </div>
       </div>

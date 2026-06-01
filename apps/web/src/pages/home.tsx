@@ -51,24 +51,25 @@ export default function Home() {
     };
 
     if (!isVerified) {
-      const randomLocation = getRandomNepalLocation();
       setGeoError(
-        "Unverified users are shown random location recommendations until verification. Verify your account to get personalized location-based results."
+        "Unverified users are shown recommendations from Kathmandu until verification. Verify your account to get location-based results from your current position."
       );
-      requestRecommendations(randomLocation.latitude, randomLocation.longitude);
+      fetchDefaultRecommendations();
       return;
     }
 
     if (typeof navigator !== "undefined" && "geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          console.log("Home geolocation success:", position.coords.latitude, position.coords.longitude);
           requestRecommendations(position.coords.latitude, position.coords.longitude);
         },
-        () => {
-          setGeoError("Unable to fetch your location, using Nepal default for recommendations.");
+        (error) => {
+          console.log("Home geolocation error:", error);
+          setGeoError("Unable to fetch your location, using Kathmandu center for recommendations.");
           fetchDefaultRecommendations();
         },
-        { timeout: 8000 }
+        { timeout: 8000, enableHighAccuracy: true, maximumAge: 0 }
       );
     } else {
       fetchDefaultRecommendations();
