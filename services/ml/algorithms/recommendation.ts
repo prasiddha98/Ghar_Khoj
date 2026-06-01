@@ -121,29 +121,24 @@ export function calculateContentScore(
   allRooms: Room[],
   viewedRoomIds: number[]
 ): number {
-  // Base score for availability (critical amenity)
   const availabilityScore = room.isAvailable ? 0.5 : 0;
-  
-  // If user has viewed rooms, match amenities they showed interest in
+  const parkingScore = room.parking ? 0.3 : 0;
+
   if (viewedRoomIds.length === 0) {
-    // No history: default scoring
-    return availabilityScore + (room.parking ? 0.2 : 0) + 0.3;
+    return Math.min(1, availabilityScore + parkingScore + 0.2);
   }
 
-  // Analyze what amenities user preferred based on viewed rooms
   const viewedRooms = allRooms.filter((r) => viewedRoomIds.includes(r.id));
   const parkingPreferenceCount = viewedRooms.filter((r) => r.parking).length;
   const availabilityPreferenceCount = viewedRooms.filter((r) => r.isAvailable).length;
 
-  // User preference percentages
   const userLikesParking = parkingPreferenceCount / viewedRoomIds.length;
   const userLikesAvailable = availabilityPreferenceCount / viewedRoomIds.length;
 
-  // Score based on user's preferences
-  const parkingScore = room.parking ? userLikesParking * 0.3 : 0;
-  const availableScore = room.isAvailable ? userLikesAvailable * 0.7 : 0;
+  const adjustedParkingScore = room.parking ? 0.3 + userLikesParking * 0.2 : 0;
+  const adjustedAvailableScore = room.isAvailable ? 0.5 + userLikesAvailable * 0.2 : 0;
 
-  return Math.min(1, availabilityScore + parkingScore + availableScore);
+  return Math.min(1, adjustedAvailableScore + adjustedParkingScore);
 }
 
 export function calculatePreferenceMatchScore(
@@ -204,7 +199,7 @@ export function getDominantRoomType(
   allRooms: Room[],
   viewedRoomIds: number[]
 ): string | null {
-  if (viewedRoomIds.length < 2) {
+  if (viewedRoomIds.length < 3) {
     return null;
   }
 
@@ -216,12 +211,12 @@ export function getDominantRoomType(
     roomTypeCount[r.roomType] = (roomTypeCount[r.roomType] || 0) + 1;
   });
 
-  // Find the most viewed room type
+  // Find the most viewed room type (requires at least 3 views)
   let dominantType: string | null = null;
   let maxCount = 0;
   
   Object.entries(roomTypeCount).forEach(([type, count]) => {
-    if (count >= 2 && count > maxCount) {
+    if (count >= 3 && count > maxCount) {
       dominantType = type;
       maxCount = count;
     }
@@ -446,7 +441,7 @@ export function buildRecommendationResults(options: {
     const preferredParking = rooms
       .filter((r) => viewedRoomIds.includes(r.id))
       .filter((r) => r.parking).length / Math.max(viewedRoomIds.length, 1);
-    const parkingBonus = room.parking && preferredParking >= 0.3 ? 0.05 : 0;
+    const parkingBonus = room.parking && preferredParking >= 0.3 ? 0.1 : 0;
 
     const prioritizedScore =
       distanceScore * 0.45 +
@@ -456,7 +451,7 @@ export function buildRecommendationResults(options: {
       collabScore * 0.05 +
       parkingBonus;
 
-    const finalScore = Math.min(1, Math.max(0, prioritizedScore + typeScore * 0.05 + preferenceScore * 0.05 + typePriority * 0.1));
+    const finalScore = Math.min(1, Math.max(0, prioritizedScore + typeScore * 0.05 + preferenceScore * 0.05 + typePriority * 0.15));
 
     return {
       roomId: room.id,
@@ -491,6 +486,10 @@ export function buildRecommendationResults(options: {
 
       if (left.contentScore !== right.contentScore) {
         return right.contentScore - left.contentScore;
+      }
+
+      if (left.room.parking !== right.room.parking) {
+        return right.room.parking ? 1 : -1;
       }
 
       if (left.knnScore !== right.knnScore) {
