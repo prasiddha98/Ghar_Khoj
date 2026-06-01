@@ -49,6 +49,13 @@ export default function RoomDetail() {
 
   const saveMutation = useCreateInteraction();
 
+  // Auto-log room view interaction for recommendation algorithm
+  useEffect(() => {
+    if (room && userId && isRealUser) {
+      saveMutation.mutate({ data: { roomId: room.id, userId, type: "view" } });
+    }
+  }, [room?.id, userId]);
+
   const handleSave = () => {
     if (!isSaved && room) {
       saveMutation.mutate({ data: { roomId: room.id, userId, type: "save" } });
