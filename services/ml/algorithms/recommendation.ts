@@ -160,6 +160,36 @@ export function calculatePreferenceMatchScore(
   return totalFactors > 0 ? Math.min(1, matchScore / totalFactors) : 0.5;
 }
 
+export function getDominantRoomType(
+  allRooms: Room[],
+  viewedRoomIds: number[]
+): string | null {
+  if (viewedRoomIds.length < 2) {
+    return null;
+  }
+
+  const viewedRooms = allRooms.filter((r) => viewedRoomIds.includes(r.id));
+  
+  // Count room types user has viewed
+  const roomTypeCount: Record<string, number> = {};
+  viewedRooms.forEach((r) => {
+    roomTypeCount[r.roomType] = (roomTypeCount[r.roomType] || 0) + 1;
+  });
+
+  // Find the most viewed room type
+  let dominantType: string | null = null;
+  let maxCount = 0;
+  
+  Object.entries(roomTypeCount).forEach(([type, count]) => {
+    if (count >= 2 && count > maxCount) {
+      dominantType = type;
+      maxCount = count;
+    }
+  });
+
+  return dominantType;
+}
+
 export function calculateRoomTypePreferenceScore(
   room: Room,
   allRooms: Room[],
@@ -337,7 +367,12 @@ export function buildRecommendationResults(options: {
   const viewedRoomIds = interactions
     .filter((i) => i.userId === userId && i.type === "view")
     .map((i) => i.roomId);
+
+  // Detect if user has a strong preference for a specific room type
+  const dominantRoomType = getDominantRoomType(rooms, viewedRoomIds);
+  
 console.log("User preferred city:", userPreferredCity);
+console.log("User dominant room type:", dominantRoomType);
   const scored = rooms.map((room) => {
     if (!matchesTenantPreferences(room, tenantPref, userPreferredCity) || !matchesRoomFilters(room, filters)) {
       return {
@@ -365,18 +400,28 @@ console.log("User preferred city:", userPreferredCity);
     const knnScore = calculateKnnScore(room, rooms, viewedRoomIds);
     const collabScore = calculateCollaborativeScore(room, users, interactions, userId);
 
+    // BOOST: If user has strong room type preference (viewed 2+ of same type),
+    // heavily boost matching rooms with strong haversine + content-based scoring
+    let dominantTypeBoost = 1;
+    if (dominantRoomType && room.roomType === dominantRoomType) {
+      dominantTypeBoost = 1.4; // 40% boost for matching dominant type
+    } else if (dominantRoomType && room.roomType !== dominantRoomType) {
+      dominantTypeBoost = 0.6; // 40% penalty for not matching dominant type
+    }
+
     // Combined scoring:
     // - Distance: 35% (haversine - closest rooms first)
     // - Type + Preference: 25% (what user viewed + their filter preferences)
-    // - Content: 20% (amenities matching user history)
+    // - Content: 20% (amenities matching user history - parking, availability)
     // - KNN: 10% (similar price/type rooms)
     // - Collaborative: 10% (similar users' choices)
+    // - BOOST: Room type matching gets enhanced if user has clear preference
     const finalScore =
-      distanceScore * 0.35 +
+      (distanceScore * 0.35 +
       (typeScore * 0.5 + preferenceScore * 0.5) * 0.25 +
       contentScore * 0.2 +
       knnScore * 0.1 +
-      collabScore * 0.1;
+      collabScore * 0.1) * dominantTypeBoost;
 
     return {
       roomId: room.id,
