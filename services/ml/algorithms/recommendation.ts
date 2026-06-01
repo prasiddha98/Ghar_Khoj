@@ -85,13 +85,12 @@ export function calculateAmenityPreferenceScore(
   if (viewedRoomIds.length === 0) {
     return 0.5; // Neutral if no history
   }
+  const viewedRooms = getViewedRoomsWithDuplicates(viewedRoomIds, allRooms);
 
-  const viewedRooms = allRooms.filter((r) => viewedRoomIds.includes(r.id));
-  
   // Calculate what percentage of viewed rooms had parking
   const parkingCount = viewedRooms.filter((r) => r.parking).length;
   const userParkingPreference = parkingCount / viewedRoomIds.length;
-  
+
   // Calculate what percentage of viewed rooms were available
   const availableCount = viewedRooms.filter((r) => r.isAvailable).length;
   const userAvailabilityPreference = availableCount / viewedRoomIds.length;
@@ -128,7 +127,7 @@ export function calculateContentScore(
     return Math.min(1, availabilityScore + parkingScore + 0.2);
   }
 
-  const viewedRooms = allRooms.filter((r) => viewedRoomIds.includes(r.id));
+  const viewedRooms = getViewedRoomsWithDuplicates(viewedRoomIds, allRooms);
   const parkingPreferenceCount = viewedRooms.filter((r) => r.parking).length;
   const availabilityPreferenceCount = viewedRooms.filter((r) => r.isAvailable).length;
 
@@ -202,19 +201,13 @@ export function getDominantRoomType(
   if (viewedRoomIds.length < 3) {
     return null;
   }
-
-  const viewedRooms = allRooms.filter((r) => viewedRoomIds.includes(r.id));
-  
-  // Count room types user has viewed
-  const roomTypeCount: Record<string, number> = {};
-  viewedRooms.forEach((r) => {
-    roomTypeCount[r.roomType] = (roomTypeCount[r.roomType] || 0) + 1;
-  });
+  // Count room types based on view occurrences (duplicates count)
+  const roomTypeCount = getRoomTypeCountsFromViewed(viewedRoomIds, allRooms);
 
   // Find the most viewed room type (requires at least 3 views)
   let dominantType: string | null = null;
   let maxCount = 0;
-  
+
   Object.entries(roomTypeCount).forEach(([type, count]) => {
     if (count >= 3 && count > maxCount) {
       dominantType = type;
@@ -233,19 +226,10 @@ export function calculateRoomTypePreferenceScore(
   if (viewedRoomIds.length === 0) {
     return 0;
   }
+  // Count room types using view occurrences (duplicates count)
+  const roomTypeCount = getRoomTypeCountsFromViewed(viewedRoomIds, allRooms);
 
-  // Get all viewed rooms
-  const viewedRooms = allRooms.filter((r) => viewedRoomIds.includes(r.id));
-  
-  // Count room types user has viewed
-  const roomTypeCount: Record<string, number> = {};
-  viewedRooms.forEach((r) => {
-    roomTypeCount[r.roomType] = (roomTypeCount[r.roomType] || 0) + 1;
-  });
-
-  // If user viewed this room type, boost the score
   if (roomTypeCount[room.roomType]) {
-    // Higher boost for more interactions with this type
     const preference = Math.min(1, roomTypeCount[room.roomType] / viewedRoomIds.length);
     return preference;
   }
@@ -262,12 +246,16 @@ export function calculateKnnScore(
     return 0.1;
   }
 
-  const similarRooms = allRooms.filter(
-    (r) =>
-      viewedRoomIds.includes(r.id) &&
-      r.roomType === room.roomType &&
-      Math.abs(r.price - room.price) < room.price * 0.3
-  );
+  // Count viewed rooms with duplicates (each view counts)
+  const roomMap: Record<number, Room> = {};
+  allRooms.forEach((r) => (roomMap[r.id] = r));
+  const viewedRoomsWithDuplicates = viewedRoomIds.map((id) => roomMap[id]).filter(Boolean as any) as Room[];
+
+  const similarRooms = viewedRoomsWithDuplicates.filter((r) => {
+    const rType = getEffectiveRoomType(r);
+    const thisType = getEffectiveRoomType(room);
+    return rType && thisType && rType === thisType && Math.abs((r.price as number) - room.price) < room.price * 0.3;
+  });
 
   return Math.min(1, (similarRooms.length / Math.max(viewedRoomIds.length, 1)) * 0.5);
 }
@@ -315,6 +303,55 @@ export function calculateCollaborativeScore(
   return similarUsersCount > 0
     ? Math.min(1, similaritySum / Math.max(similarUsersCount, 1))
     : 0.05;
+}
+
+// Helper: return viewed rooms preserving duplicates (so repeated views count)
+function getViewedRoomsWithDuplicates(viewedRoomIds: number[], allRooms: Room[]): Room[] {
+  const roomMap: Record<number, Room> = {};
+  allRooms.forEach((r) => (roomMap[r.id] = r));
+  return viewedRoomIds.map((id) => roomMap[id]).filter(Boolean as any) as Room[];
+}
+
+// Helper: get counts of room types from viewed room ids (counts duplicates)
+function getRoomTypeCountsFromViewed(viewedRoomIds: number[], allRooms: Room[]): Record<string, number> {
+  const viewed = getViewedRoomsWithDuplicates(viewedRoomIds, allRooms);
+  const roomTypeCount: Record<string, number> = {};
+  viewed.forEach((r) => {
+    if (!r) return;
+    const t = getEffectiveRoomType(r);
+    if (!t) return;
+    roomTypeCount[t] = (roomTypeCount[t] || 0) + 1;
+  });
+  return roomTypeCount;
+}
+
+// Infer room type from textual fields when `roomType` is missing or unreliable
+export function inferRoomTypeFromText(room: Room): string | null {
+  const textFields: string[] = [];
+  const t = (room as any).title;
+  const d = (room as any).description || (room as any).details || (room as any).summary;
+  if (typeof t === "string") textFields.push(t.toLowerCase());
+  if (typeof d === "string") textFields.push(d.toLowerCase());
+
+  const combined = textFields.join(" ");
+  if (!combined) return null;
+
+  if (/\b(single|1bhk|one bhk|one-room|one room|single room|studio)\b/.test(combined)) return "single";
+  if (/\b(double|2bhk|two bhk|two-room|two room|double room)\b/.test(combined)) return "double";
+  if (/\b(flat|apartment|apartment for rent|residential)\b/.test(combined)) return "flat";
+  if (/\b(shared|sharing|roommate)\b/.test(combined)) return "shared";
+  if (/\b(hostel)\b/.test(combined)) return "hostel";
+  if (/\b(studio)\b/.test(combined)) return "studio";
+
+  return null;
+}
+
+export function getEffectiveRoomType(room: Room): string | null {
+  if (room.roomType && typeof room.roomType === "string" && room.roomType.trim() !== "") {
+    return room.roomType;
+  }
+  const inferred = inferRoomTypeFromText(room);
+  return inferred;
 }
 
 export function matchesTenantPreferences(
@@ -403,6 +440,8 @@ export function buildRecommendationResults(options: {
     .filter((i) => i.userId === userId && i.type === "view")
     .map((i) => i.roomId);
 
+  const viewedRoomsWithDuplicates = getViewedRoomsWithDuplicates(viewedRoomIds, rooms);
+
   // Detect if user has a strong preference for a specific room type
   const dominantRoomType = getDominantRoomType(rooms, viewedRoomIds);
 
@@ -435,12 +474,11 @@ export function buildRecommendationResults(options: {
     const knnScore = calculateKnnScore(room, rooms, viewedRoomIds);
     const collabScore = calculateCollaborativeScore(room, users, interactions, userId);
 
-    const matchingDominantType = dominantRoomType && room.roomType === dominantRoomType;
+    const effectiveRoomType = getEffectiveRoomType(room);
+    const matchingDominantType = dominantRoomType && effectiveRoomType === dominantRoomType;
 
     const typePriority = matchingDominantType ? 1 : 0;
-    const preferredParking = rooms
-      .filter((r) => viewedRoomIds.includes(r.id))
-      .filter((r) => r.parking).length / Math.max(viewedRoomIds.length, 1);
+    const preferredParking = viewedRoomsWithDuplicates.filter((r) => r.parking).length / Math.max(viewedRoomIds.length, 1);
     const parkingBonus = room.parking && preferredParking >= 0.3 ? 0.1 : 0;
 
     const prioritizedScore =
@@ -472,8 +510,8 @@ export function buildRecommendationResults(options: {
   return scored
     .filter((result) => result.finalScore > Number.NEGATIVE_INFINITY)
     .sort((left, right) => {
-      const leftDominant = dominantRoomType && left.room.roomType === dominantRoomType ? 1 : 0;
-      const rightDominant = dominantRoomType && right.room.roomType === dominantRoomType ? 1 : 0;
+      const leftDominant = dominantRoomType && getEffectiveRoomType(left.room) === dominantRoomType ? 1 : 0;
+      const rightDominant = dominantRoomType && getEffectiveRoomType(right.room) === dominantRoomType ? 1 : 0;
       if (leftDominant !== rightDominant) {
         return rightDominant - leftDominant;
       }
