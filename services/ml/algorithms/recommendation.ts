@@ -44,6 +44,7 @@ export interface RecommendationResult {
   room: Room;
   distanceKm: number;
   contentScore: number;
+  amenityScore: number;
   typeScore: number;
   knnScore: number;
   collabScore: number;
@@ -74,6 +75,45 @@ export function haversineDistance(
 
 export function calculateDistanceScore(distanceKm: number): number {
   return Math.max(0, 1 - distanceKm / 50);
+}
+
+export function calculateAmenityPreferenceScore(
+  room: Room,
+  allRooms: Room[],
+  viewedRoomIds: number[]
+): number {
+  if (viewedRoomIds.length === 0) {
+    return 0.5; // Neutral if no history
+  }
+
+  const viewedRooms = allRooms.filter((r) => viewedRoomIds.includes(r.id));
+  
+  // Calculate what percentage of viewed rooms had parking
+  const parkingCount = viewedRooms.filter((r) => r.parking).length;
+  const userParkingPreference = parkingCount / viewedRoomIds.length;
+  
+  // Calculate what percentage of viewed rooms were available
+  const availableCount = viewedRooms.filter((r) => r.isAvailable).length;
+  const userAvailabilityPreference = availableCount / viewedRoomIds.length;
+
+  // Score based on amenities matching user's viewed preferences
+  let score = 0;
+
+  // Parking score: if user viewed rooms with parking, boost parking rooms
+  if (room.parking && userParkingPreference >= 0.3) {
+    // If user viewed 30%+ rooms with parking, prioritize parking rooms
+    score += userParkingPreference * 0.6; // Up to 0.6 points for parking match
+  } else if (!room.parking && userParkingPreference >= 0.3) {
+    // Penalize rooms without parking if user preferred parking
+    score -= userParkingPreference * 0.2; // Down to -0.2 for no parking when user wants it
+  }
+
+  // Availability score: rooms that are available score higher
+  if (room.isAvailable && userAvailabilityPreference >= 0.4) {
+    score += userAvailabilityPreference * 0.4; // Up to 0.4 for availability match
+  }
+
+  return Math.max(0, Math.min(1, score + 0.5)); // Normalize to 0-1, default to 0.5
 }
 
 export function calculateContentScore(
@@ -380,6 +420,7 @@ console.log("User dominant room type:", dominantRoomType);
         room,
         distanceKm: 0,
         contentScore: 0,
+        amenityScore: 0,
         typeScore: 0,
         knnScore: 0,
         collabScore: 0,
@@ -395,12 +436,13 @@ console.log("User dominant room type:", dominantRoomType);
       : 0;
     const distanceScore = calculateDistanceScore(distanceKm);
     const contentScore = calculateContentScore(room, rooms, viewedRoomIds);
+    const amenityScore = calculateAmenityPreferenceScore(room, rooms, viewedRoomIds);
     const typeScore = calculateRoomTypePreferenceScore(room, rooms, viewedRoomIds);
     const preferenceScore = calculatePreferenceMatchScore(room, tenantPref);
     const knnScore = calculateKnnScore(room, rooms, viewedRoomIds);
     const collabScore = calculateCollaborativeScore(room, users, interactions, userId);
 
-    // BOOST: If user has strong room type preference (viewed 2+ of same type),
+    // BOOST 1: If user has strong room type preference (viewed 2+ of same type),
     // heavily boost matching rooms with strong haversine + content-based scoring
     let dominantTypeBoost = 1;
     if (dominantRoomType && room.roomType === dominantRoomType) {
@@ -409,25 +451,42 @@ console.log("User dominant room type:", dominantRoomType);
       dominantTypeBoost = 0.6; // 40% penalty for not matching dominant type
     }
 
+    // BOOST 2: If user showed parking preference + room type match + has parking,
+    // give additional boost (rooms with parking appear before those without)
+    let parkingBoost = 1;
+    const viewedRooms = rooms.filter((r) => viewedRoomIds.includes(r.id));
+    const userPrefersParkingRooms = viewedRooms.filter((r) => r.parking).length / Math.max(viewedRoomIds.length, 1);
+    
+    if (dominantRoomType && room.roomType === dominantRoomType && userPrefersParkingRooms >= 0.3) {
+      // User views specific room type AND prefers parking
+      if (room.parking) {
+        parkingBoost = 1.3; // 30% boost for parking when user prefers it
+      } else {
+        parkingBoost = 0.75; // 25% penalty for no parking when user prefers it
+      }
+    }
+
     // Combined scoring:
     // - Distance: 35% (haversine - closest rooms first)
     // - Type + Preference: 25% (what user viewed + their filter preferences)
-    // - Content: 20% (amenities matching user history - parking, availability)
+    // - Content + Amenity: 25% (amenities matching user history - parking, availability)
     // - KNN: 10% (similar price/type rooms)
-    // - Collaborative: 10% (similar users' choices)
-    // - BOOST: Room type matching gets enhanced if user has clear preference
+    // - Collaborative: 5% (similar users' choices)
+    // - BOOST 1: Room type matching gets enhanced if user has clear preference (1.4x or 0.6x)
+    // - BOOST 2: Parking preference boost when room type + parking match (1.3x) or no parking (0.75x)
     const finalScore =
       (distanceScore * 0.35 +
       (typeScore * 0.5 + preferenceScore * 0.5) * 0.25 +
-      contentScore * 0.2 +
+      (contentScore * 0.5 + amenityScore * 0.5) * 0.25 +
       knnScore * 0.1 +
-      collabScore * 0.1) * dominantTypeBoost;
+      collabScore * 0.05) * dominantTypeBoost * parkingBoost;
 
     return {
       roomId: room.id,
       room,
       distanceKm,
       contentScore,
+      amenityScore,
       typeScore,
       knnScore,
       collabScore,

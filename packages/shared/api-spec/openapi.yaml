@@ -968,6 +968,8 @@ components:
           type: number
         contentScore:
           type: number
+        amenityScore:
+          type: number
         typeScore:
           type: number
         knnScore:
@@ -987,6 +989,7 @@ components:
         - room
         - distanceKm
         - contentScore
+        - amenityScore
         - typeScore
         - knnScore
         - collabScore
