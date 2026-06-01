@@ -84,19 +84,34 @@ export function useUserVisitedRoomTypes() {
         // Limit to first 20 to avoid too many API calls
         const limitedIds = roomIds.slice(0, 20);
         
+        console.log("Fetching room details for IDs:", limitedIds);
+        
         for (const roomId of limitedIds) {
           try {
             const res = await fetch(`/api/rooms/${roomId}`);
-            if (!res.ok) continue;
+            
+            if (!res.ok) {
+              console.warn(`Room ${roomId} fetch returned status ${res.status}`);
+              continue;
+            }
+
+            const contentType = res.headers.get('content-type');
+            if (!contentType?.includes('application/json')) {
+              console.warn(`Room ${roomId} returned non-JSON content-type: ${contentType}`);
+              continue;
+            }
             
             const data = await res.json();
             const room = data.room || data;
             
             if (room?.roomType) {
               roomTypeCount.set(room.roomType, (roomTypeCount.get(room.roomType) || 0) + 1);
+              console.log(`Room ${roomId} type: ${room.roomType}`);
+            } else {
+              console.warn(`Room ${roomId} has no roomType field:`, room);
             }
           } catch (err) {
-            console.error(`Failed to fetch room ${roomId}:`, err);
+            console.error(`Failed to fetch/parse room ${roomId}:`, err);
             continue;
           }
         }
@@ -107,7 +122,7 @@ export function useUserVisitedRoomTypes() {
           .map(([roomType, count]) => roomType);
 
         console.log("Room types by frequency:", Object.fromEntries(roomTypeCount));
-        console.log("Sorted room types:", sorted);
+        console.log("Sorted room types (should show first in recommendations):", sorted);
         
         setVisitedRoomTypes(sorted);
       } catch (error) {
