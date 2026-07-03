@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { BackButton } from "@/components/back-button";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Users, Home, ShieldCheck, MessageSquare, BarChart2, CheckCircle2,
+  Users, Home, ShieldCheck, MessageSquare, Bell, BarChart2, CheckCircle2,
   Building, AlertTriangle, Trash2, RefreshCw, XCircle, Crown, Key,
   ChevronDown, ChevronLeft, ChevronRight, UserCog, Search, Eye, TrendingUp, Clock, Star, Ban,
   FileText, PenLine, ArrowLeft, Loader2
@@ -15,14 +15,29 @@ import { Input } from "@/components/ui/input";
 import { ContractViewer } from "@/components/contract-viewer";
 import { customFetchRaw } from "@/lib/customFetch";
 import { useToast } from "@/hooks/use-toast";
-import { cn, getMediaUrl } from "@/lib/utils";
+import { useRoomTypes, type RoomTypeOption } from "@/hooks/use-room-types";
+import { cn, getMediaUrl, formatRoomType } from "@/lib/utils";
 
-type Tab = "overview" | "verifications" | "users" | "rooms" | "contracts";
+type Tab = "overview" | "verifications" | "users" | "rooms" | "contracts" | "roomTypes" | "complaints" | "reports" | "notifications";
 
 interface Stats {
-  totalUsers: number; totalRooms: number; pendingVerifications: number;
-  totalMessages: number; verifiedUsers: number; availableRooms: number;
+  totalUsers: number;
+  totalOwners: number;
+  totalTenants: number;
+  totalRooms: number;
+  activeRooms: number;
+  rentedRooms: number;
+  pendingVerifications: number;
+  pendingRoomApprovals: number;
+  totalMessages: number;
+  verifiedUsers: number;
+  availableRooms: number;
   unverifiedRooms: number;
+  suspendedUsers: number;
+  bannedUsers: number;
+  complaints: number;
+  reports: number;
+  notifications: number;
 }
 interface VDoc {
   id: number; userId: number; docType: string; docUrl?: string;
@@ -33,6 +48,20 @@ interface VDoc {
 interface AdminUser {
   id: number; firstName: string; lastName?: string; email: string;
   role: string; isVerified: boolean; verificationStatus: string; createdAt: string;
+  isSuspended: boolean; suspensionReason?: string | null; suspendedAt?: string | null;
+  isBanned: boolean; banReason?: string | null; bannedAt?: string | null;
+}
+interface AdminComplaint {
+  id: number; userId: number; againstUserId?: number | null; roomId?: number | null;
+  subject: string; details: string; status: string; adminNote?: string | null; createdAt: string;
+}
+interface AdminReport {
+  id: number; userId: number; reportedUserId: number; roomId?: number | null;
+  reason: string; details?: string | null; status: string; adminNote?: string | null; createdAt: string;
+}
+interface AdminNotification {
+  id: number; userId: number; type: string; title: string; message: string;
+  isRead: boolean; sentByAdminId?: number | null; createdAt: string;
 }
 interface Room {
   id: number; title: string; city: string; price: number; roomType: string;
@@ -121,12 +150,19 @@ export default function AdminDashboard() {
   const [imageModal, setImageModal] = useState<{ url: string; type: string } | null>(null);
   const [viewingOwnerRooms, setViewingOwnerRooms] = useState<number | null>(null);
   const { toast } = useToast();
+  const { roomTypes, isLoading: isRoomTypesLoading, error: roomTypesError, refetch: refetchRoomTypes } = useRoomTypes("/admin/room-types");
+  const [editingRoomType, setEditingRoomType] = useState<RoomTypeOption | null>(null);
+  const [roomTypeForm, setRoomTypeForm] = useState({ slug: "", label: "", description: "", position: 0, isActive: true });
 
   const stats = useFetch<Stats>("/api/admin/stats");
   const verifications = useFetch<{ verifications: VDoc[] }>("/api/admin/verifications");
   const users = useFetch<{ users: AdminUser[]; total: number }>("/api/admin/users");
   const rooms = useFetch<{ rooms: Room[]; total: number }>("/api/admin/rooms");
   const contracts = useFetch<{ contracts: AdminContract[] }>("/api/admin/contracts");
+  const complaints = useFetch<{ complaints: AdminComplaint[]; total: number }>("/api/admin/complaints");
+  const reports = useFetch<{ reports: AdminReport[]; total: number }>("/api/admin/reports");
+  const notifications = useFetch<{ notifications: AdminNotification[]; total: number }>("/api/admin/notifications");
+  const [notificationForm, setNotificationForm] = useState({ userId: "", type: "system", title: "", message: "" });
   const ownerRooms = useFetch<{ rooms: Room[] }>(
     viewingOwnerRooms ? `/api/rooms/owner/${viewingOwnerRooms}` : ""
   );
@@ -254,7 +290,187 @@ export default function AdminDashboard() {
     }
   };
 
-  const refetchAll = () => { stats.refetch(); verifications.refetch(); users.refetch(); rooms.refetch(); contracts.refetch(); };
+  const resetRoomTypeForm = () => {
+    setEditingRoomType(null);
+    setRoomTypeForm({ slug: "", label: "", description: "", position: 0, isActive: true });
+  };
+
+  const editRoomType = (roomType: RoomTypeOption) => {
+    setEditingRoomType(roomType);
+    setRoomTypeForm({
+      slug: roomType.slug,
+      label: roomType.label,
+      description: roomType.description ?? "",
+      position: roomType.position,
+      isActive: roomType.isActive,
+    });
+  };
+
+  const saveRoomType = async () => {
+    try {
+      if (!roomTypeForm.slug.trim() || !roomTypeForm.label.trim()) {
+        toast({ title: "Slug and label are required", variant: "destructive" });
+        return;
+      }
+
+      const method = editingRoomType ? "PATCH" : "POST";
+      const url = editingRoomType ? `/api/room-types/${editingRoomType.id}` : "/api/room-types";
+      const response = await customFetchRaw(url, {
+        method,
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          slug: roomTypeForm.slug.trim(),
+          label: roomTypeForm.label.trim(),
+          description: roomTypeForm.description.trim() || null,
+          position: Number(roomTypeForm.position) || 0,
+          isActive: roomTypeForm.isActive,
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error((result as any)?.message || "Unable to save room type");
+      }
+
+      toast({ title: editingRoomType ? "Room type updated" : "Room type created" });
+      resetRoomTypeForm();
+      refetchRoomTypes();
+    } catch (err: any) {
+      toast({ title: "Failed to save room type", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const deleteRoomType = async (id: number) => {
+    if (!confirm("Delete this room type? Existing listings using this type will remain, but new entries cannot select it.")) return;
+
+    try {
+      const response = await customFetchRaw(`/api/room-types/${id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error((result as any)?.message || "Unable to delete room type");
+      }
+
+      toast({ title: "Room type deleted" });
+      refetchRoomTypes();
+      if (editingRoomType?.id === id) {
+        resetRoomTypeForm();
+      }
+    } catch (err: any) {
+      toast({ title: "Failed to delete room type", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const updateUserFlags = async (userId: number, flags: { isSuspended?: boolean; isBanned?: boolean; reason?: string }) => {
+    try {
+      const response = await customFetchRaw(`/api/admin/users/${userId}/flags`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify(flags),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error((error as any)?.message || "Unable to update user flags");
+      }
+      toast({ title: "User status updated" });
+      users.refetch();
+      stats.refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to update status", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const resolveComplaint = async (id: number, note = "Resolved by admin") => {
+    try {
+      const response = await customFetchRaw(`/api/admin/complaints/${id}`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: "resolved", adminNote: note }),
+      });
+      if (!response.ok) throw new Error("Failed to resolve complaint");
+      toast({ title: "Complaint resolved" });
+      complaints.refetch();
+      stats.refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to resolve complaint", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const rejectComplaint = async (id: number, note = "Rejected by admin") => {
+    try {
+      const response = await customFetchRaw(`/api/admin/complaints/${id}`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: "rejected", adminNote: note }),
+      });
+      if (!response.ok) throw new Error("Failed to reject complaint");
+      toast({ title: "Complaint rejected" });
+      complaints.refetch();
+      stats.refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to reject complaint", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const resolveReport = async (id: number, note = "Resolved by admin") => {
+    try {
+      const response = await customFetchRaw(`/api/admin/reports/${id}`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: "resolved", adminNote: note }),
+      });
+      if (!response.ok) throw new Error("Failed to resolve report");
+      toast({ title: "Report resolved" });
+      reports.refetch();
+      stats.refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to resolve report", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const rejectReport = async (id: number, note = "Rejected by admin") => {
+    try {
+      const response = await customFetchRaw(`/api/admin/reports/${id}`, {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: "rejected", adminNote: note }),
+      });
+      if (!response.ok) throw new Error("Failed to reject report");
+      toast({ title: "Report rejected" });
+      reports.refetch();
+      stats.refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to reject report", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const sendNotification = async () => {
+    if (!notificationForm.userId.trim() || !notificationForm.title.trim() || !notificationForm.message.trim()) {
+      toast({ title: "Complete the notification form", variant: "destructive" });
+      return;
+    }
+    try {
+      const userId = Number(notificationForm.userId);
+      if (Number.isNaN(userId)) throw new Error("Invalid user ID");
+      const response = await customFetchRaw(`/api/admin/notifications`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ userId, type: notificationForm.type, title: notificationForm.title.trim(), message: notificationForm.message.trim() }),
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => null);
+        throw new Error((error as any)?.message || "Unable to send notification");
+      }
+      toast({ title: "Notification sent" });
+      setNotificationForm({ userId: "", type: "system", title: "", message: "" });
+      notifications.refetch();
+    } catch (err: any) {
+      toast({ title: "Failed to send notification", description: err?.message || "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const refetchAll = () => { stats.refetch(); verifications.refetch(); users.refetch(); rooms.refetch(); contracts.refetch(); complaints.refetch(); reports.refetch(); notifications.refetch(); refetchRoomTypes(); };
 
   const filteredUsers = users.data?.users?.filter(u =>
     `${u.firstName} ${u.lastName} ${u.email}`.toLowerCase().includes(userSearch.toLowerCase())
@@ -269,10 +485,14 @@ export default function AdminDashboard() {
 
   const tabs = [
     { id: "overview" as Tab, icon: BarChart2, label: "Overview" },
+    { id: "roomTypes" as Tab, icon: Key, label: "Room Types" },
     { id: "verifications" as Tab, icon: ShieldCheck, label: "Verifications", badge: stats.data?.pendingVerifications },
     { id: "users" as Tab, icon: Users, label: "Users", badge: users.data?.total },
     { id: "rooms" as Tab, icon: Building, label: "Rooms", badge: stats.data?.unverifiedRooms },
     { id: "contracts" as Tab, icon: FileText, label: "Contracts", badge: pendingContracts.length || undefined },
+    { id: "complaints" as Tab, icon: AlertTriangle, label: "Complaints", badge: stats.data?.complaints },
+    { id: "reports" as Tab, icon: MessageSquare, label: "Reports", badge: stats.data?.reports },
+    { id: "notifications" as Tab, icon: Bell, label: "Notifications", badge: stats.data?.notifications },
   ];
 
   return (
@@ -359,7 +579,7 @@ export default function AdminDashboard() {
                         <tr key={r.id} className="hover:bg-muted/20 transition-colors">
                           <td className="p-4">
                             <p className="font-semibold line-clamp-1">{r.title}</p>
-                            <p className="text-xs text-muted-foreground capitalize">{r.roomType}</p>
+                            <p className="text-xs text-muted-foreground">{formatRoomType(r.roomType)}</p>
                           </td>
                           <td className="p-4 text-muted-foreground text-xs">{r.city}</td>
                           <td className="p-4 font-semibold">NPR {r.price.toLocaleString()}</td>
@@ -403,13 +623,15 @@ export default function AdminDashboard() {
           <div className="space-y-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard icon={Users} label="Total Users" value={stats.data?.totalUsers ?? 0} color="bg-blue-100 text-blue-600" />
+              <StatCard icon={UserCog} label="Total Owners" value={stats.data?.totalOwners ?? 0} color="bg-green-100 text-green-700" />
+              <StatCard icon={Users} label="Total Tenants" value={stats.data?.totalTenants ?? 0} color="bg-primary/10 text-primary" />
               <StatCard icon={Building} label="Total Rooms" value={stats.data?.totalRooms ?? 0} color="bg-purple-100 text-purple-600" />
+              <StatCard icon={Home} label="Active Listings" value={stats.data?.activeRooms ?? 0} color="bg-sky-100 text-sky-600" />
+              <StatCard icon={AlertTriangle} label="Rented Rooms" value={stats.data?.rentedRooms ?? 0} color="bg-red-100 text-red-700" />
               <StatCard icon={ShieldCheck} label="Pending KYC" value={stats.data?.pendingVerifications ?? 0} color="bg-amber-100 text-amber-600" />
-              <StatCard icon={MessageSquare} label="Total Messages" value={stats.data?.totalMessages ?? 0} color="bg-green-100 text-green-600" />
+              <StatCard icon={FileText} label="Pending Room Approvals" value={stats.data?.pendingRoomApprovals ?? 0} color="bg-amber-100 text-amber-600" />
               <StatCard icon={CheckCircle2} label="Verified Users" value={stats.data?.verifiedUsers ?? 0} color="bg-emerald-100 text-emerald-600"
                 sub={stats.data ? `${Math.round((stats.data.verifiedUsers / Math.max(stats.data.totalUsers, 1)) * 100)}% verified` : undefined} />
-              <StatCard icon={Home} label="Available Rooms" value={stats.data?.availableRooms ?? 0} color="bg-sky-100 text-sky-600" />
-              <StatCard icon={AlertTriangle} label="Unverified Rooms" value={stats.data?.unverifiedRooms ?? 0} color="bg-orange-100 text-orange-600" />
               <StatCard icon={FileText} label="Contracts to Review" value={pendingContracts.length} color="bg-teal-100 text-teal-600" />
             </div>
 
@@ -463,6 +685,109 @@ export default function AdminDashboard() {
         )}
 
         {/* ══════════ VERIFICATIONS ══════════ */}
+        {tab === "roomTypes" && !viewingOwnerRooms && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-3xl border shadow-sm p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-5">
+                <div>
+                  <h2 className="font-bold text-xl">Room Type Management</h2>
+                  <p className="text-sm text-muted-foreground mt-1">Add, edit, and deactivate room type options used by owners and tenants.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {editingRoomType && (
+                    <button type="button" onClick={resetRoomTypeForm}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      Cancel Edit
+                    </button>
+                  )}
+                  <button type="button" onClick={saveRoomType}
+                    className="inline-flex items-center justify-center rounded-2xl bg-primary text-white px-4 py-2 text-sm font-semibold">
+                    {editingRoomType ? "Update Room Type" : "Add Room Type"}
+                  </button>
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div>
+                  <label className="text-xs font-semibold text-foreground mb-1.5 block">Slug</label>
+                  <input value={roomTypeForm.slug} onChange={e => setRoomTypeForm(prev => ({ ...prev, slug: e.target.value }))}
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10" placeholder="e.g. 1bhk" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-foreground mb-1.5 block">Label</label>
+                  <input value={roomTypeForm.label} onChange={e => setRoomTypeForm(prev => ({ ...prev, label: e.target.value }))}
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10" placeholder="1BHK" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-foreground mb-1.5 block">Position</label>
+                  <input type="number" value={roomTypeForm.position} onChange={e => setRoomTypeForm(prev => ({ ...prev, position: Number(e.target.value) }))}
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-xs font-semibold text-foreground mb-1.5 block">Description</label>
+                  <input value={roomTypeForm.description} onChange={e => setRoomTypeForm(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10" placeholder="Optional description" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input id="room-type-active" type="checkbox" checked={roomTypeForm.isActive} onChange={e => setRoomTypeForm(prev => ({ ...prev, isActive: e.target.checked }))}
+                    className="h-4 w-4 rounded border-input text-primary" />
+                  <label htmlFor="room-type-active" className="text-sm text-foreground">Active</label>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border shadow-sm overflow-hidden">
+              <div className="px-5 py-4 border-b flex items-center justify-between">
+                <div>
+                  <h2 className="font-bold text-lg">Available Room Types</h2>
+                  <p className="text-xs text-muted-foreground mt-1">Active room types are visible to tenants and owners in the app.</p>
+                </div>
+                <button onClick={refetchRoomTypes} className="text-sm font-semibold text-primary hover:underline">Refresh</button>
+              </div>
+              {isRoomTypesLoading ? (
+                <div className="p-8 text-center text-muted-foreground">Loading room types...</div>
+              ) : roomTypesError ? (
+                <div className="p-8 text-center text-destructive">Unable to load room types.</div>
+              ) : !roomTypes.length ? (
+                <div className="p-8 text-center text-muted-foreground">No room types configured yet.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/30">
+                      <tr>
+                        <th className="text-left p-4 font-semibold uppercase text-xs text-muted-foreground">Label</th>
+                        <th className="text-left p-4 font-semibold uppercase text-xs text-muted-foreground">Slug</th>
+                        <th className="text-left p-4 font-semibold uppercase text-xs text-muted-foreground">Status</th>
+                        <th className="text-left p-4 font-semibold uppercase text-xs text-muted-foreground">Position</th>
+                        <th className="text-left p-4 font-semibold uppercase text-xs text-muted-foreground">Created</th>
+                        <th className="text-left p-4 font-semibold uppercase text-xs text-muted-foreground">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {roomTypes.map(rt => (
+                        <tr key={rt.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="p-4 font-semibold">{rt.label}</td>
+                          <td className="p-4 text-xs text-muted-foreground">{rt.slug}</td>
+                          <td className="p-4">
+                            <Badge className={cn("text-xs", rt.isActive ? "bg-secondary/10 text-secondary" : "bg-muted/10 text-muted-foreground")}>{rt.isActive ? "Active" : "Inactive"}</Badge>
+                          </td>
+                          <td className="p-4 text-muted-foreground">{rt.position}</td>
+                          <td className="p-4 text-muted-foreground text-xs">{new Date(rt.createdAt).toLocaleDateString("en-NP")}</td>
+                          <td className="p-4">
+                            <div className="flex flex-wrap gap-2">
+                              <button type="button" onClick={() => editRoomType(rt)} className="text-xs bg-white border border-border px-3 py-1.5 rounded-lg font-semibold hover:bg-muted/40">Edit</button>
+                              <button type="button" onClick={() => deleteRoomType(rt.id)} className="text-xs bg-red-100 text-red-700 px-3 py-1.5 rounded-lg font-semibold hover:bg-red-200">Delete</button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {tab === "verifications" && !viewingOwnerRooms && (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
@@ -646,6 +971,7 @@ export default function AdminDashboard() {
                       <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">User</th>
                       <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Email</th>
                       <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Role</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Status</th>
                       <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Verification</th>
                       <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Joined</th>
                       <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Actions</th>
@@ -679,6 +1005,17 @@ export default function AdminDashboard() {
                         </td>
                         <td className="p-4">
                           <div className="flex flex-col gap-1">
+                            {u.isBanned ? (
+                              <span className="flex items-center gap-1 text-red-600 text-xs font-semibold"><XCircle size={13} /> Banned</span>
+                            ) : u.isSuspended ? (
+                              <span className="flex items-center gap-1 text-amber-600 text-xs font-semibold"><Ban size={13} /> Suspended</span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-green-600 text-xs font-semibold"><CheckCircle2 size={13} /> Active</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-col gap-1">
                             {u.isVerified
                               ? <span className="flex items-center gap-1 text-green-600 text-xs font-semibold"><CheckCircle2 size={13} /> Verified</span>
                               : <span className="flex items-center gap-1 text-amber-600 text-xs font-semibold"><Clock size={13} /> {u.verificationStatus}</span>}
@@ -686,10 +1023,22 @@ export default function AdminDashboard() {
                         </td>
                         <td className="p-4 text-muted-foreground text-xs">{new Date(u.createdAt).toLocaleDateString("en-NP")}</td>
                         <td className="p-4">
-                          <div className="relative flex gap-2">
+                          <div className="relative flex flex-wrap gap-2">
                             <button onClick={() => setRoleTarget(roleTarget === u.id ? null : u.id)}
                               className="flex items-center gap-1.5 text-xs bg-muted hover:bg-muted/80 px-3 py-1.5 rounded-lg font-medium transition-colors">
                               <UserCog size={13} /> Change Role <ChevronDown size={12} />
+                            </button>
+                            <button onClick={() => updateUserFlags(u.id, { isSuspended: !u.isSuspended, reason: u.isSuspended ? undefined : "Suspended by admin" })}
+                              className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors",
+                                u.isSuspended ? "bg-amber-100 hover:bg-amber-200 text-amber-800" : "bg-yellow-100 hover:bg-yellow-200 text-amber-900")}
+                            >
+                              <Ban size={12} /> {u.isSuspended ? "Reactivate" : "Suspend"}
+                            </button>
+                            <button onClick={() => updateUserFlags(u.id, { isBanned: !u.isBanned, reason: u.isBanned ? undefined : "Banned by admin" })}
+                              className={cn("flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors",
+                                u.isBanned ? "bg-green-100 hover:bg-green-200 text-green-700" : "bg-red-100 hover:bg-red-200 text-red-700")}
+                            >
+                              <XCircle size={12} /> {u.isBanned ? "Unban" : "Ban"}
                             </button>
                             {u.role === "owner" && (
                               <button onClick={() => setViewingOwnerRooms(u.id)}
@@ -796,6 +1145,176 @@ export default function AdminDashboard() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "complaints" && !viewingOwnerRooms && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b flex flex-col sm:flex-row sm:items-center gap-3">
+                <div>
+                  <h2 className="font-bold text-lg">User Complaints</h2>
+                  <p className="text-xs text-muted-foreground">Review, resolve, or reject complaints raised by users.</p>
+                </div>
+                <div className="ml-auto text-xs text-muted-foreground">Total: {complaints.data?.total ?? 0}</div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/30">
+                    <tr>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Subject</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">User</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Against</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Status</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Raised</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {complaints.data?.complaints?.length === 0 ? (
+                      <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No complaints found.</td></tr>
+                    ) : complaints.data?.complaints?.map(c => (
+                      <tr key={c.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="p-4">
+                          <p className="font-semibold line-clamp-1">{c.subject}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{c.details}</p>
+                        </td>
+                        <td className="p-4 text-xs text-muted-foreground">#{c.userId}</td>
+                        <td className="p-4 text-xs text-muted-foreground">{c.againstUserId ? `#${c.againstUserId}` : "N/A"}</td>
+                        <td className="p-4">
+                          <Badge className={cn("text-xs", c.status === "open" ? "bg-amber-100 text-amber-700" : c.status === "resolved" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{c.status}</Badge>
+                        </td>
+                        <td className="p-4 text-muted-foreground text-xs">{new Date(c.createdAt).toLocaleDateString("en-NP")}</td>
+                        <td className="p-4">
+                          <div className="flex flex-wrap gap-2">
+                            <button onClick={() => resolveComplaint(c.id)} className="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-lg font-semibold transition-colors">Resolve</button>
+                            <button onClick={() => rejectComplaint(c.id)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-semibold transition-colors">Reject</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "reports" && !viewingOwnerRooms && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b flex flex-col sm:flex-row sm:items-center gap-3">
+                <div>
+                  <h2 className="font-bold text-lg">Reports</h2>
+                  <p className="text-xs text-muted-foreground">Review reports from users and take action as needed.</p>
+                </div>
+                <div className="ml-auto text-xs text-muted-foreground">Total: {reports.data?.total ?? 0}</div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/30">
+                    <tr>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Reason</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Reporter</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Reported</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Status</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Created</th>
+                      <th className="text-left p-4 font-semibold text-muted-foreground text-xs uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {reports.data?.reports?.length === 0 ? (
+                      <tr><td colSpan={6} className="p-6 text-center text-muted-foreground">No reports found.</td></tr>
+                    ) : reports.data?.reports?.map(rp => (
+                      <tr key={rp.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="p-4">
+                          <p className="font-semibold line-clamp-1">{rp.reason}</p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">{rp.details}</p>
+                        </td>
+                        <td className="p-4 text-xs text-muted-foreground">#{rp.userId}</td>
+                        <td className="p-4 text-xs text-muted-foreground">#{rp.reportedUserId}</td>
+                        <td className="p-4">
+                          <Badge className={cn("text-xs", rp.status === "open" ? "bg-amber-100 text-amber-700" : rp.status === "resolved" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>{rp.status}</Badge>
+                        </td>
+                        <td className="p-4 text-muted-foreground text-xs">{new Date(rp.createdAt).toLocaleDateString("en-NP")}</td>
+                        <td className="p-4">
+                          <div className="flex flex-wrap gap-2">
+                            <button onClick={() => resolveReport(rp.id)} className="text-xs bg-green-100 hover:bg-green-200 text-green-700 px-3 py-1.5 rounded-lg font-semibold transition-colors">Resolve</button>
+                            <button onClick={() => rejectReport(rp.id)} className="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1.5 rounded-lg font-semibold transition-colors">Reject</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "notifications" && !viewingOwnerRooms && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b flex flex-col sm:flex-row sm:items-center gap-3">
+                <div>
+                  <h2 className="font-bold text-lg">Notifications</h2>
+                  <p className="text-xs text-muted-foreground">Create system notices or alerts for specific users.</p>
+                </div>
+                <div className="ml-auto text-xs text-muted-foreground">Total: {notifications.data?.total ?? 0}</div>
+              </div>
+              <div className="px-6 py-5 grid gap-4 md:grid-cols-[1.2fr,0.8fr]">
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-semibold text-foreground mb-1.5 block">User ID</label>
+                      <Input value={notificationForm.userId} onChange={e => setNotificationForm(prev => ({ ...prev, userId: e.target.value }))}
+                        placeholder="User ID" className="h-10 rounded-xl" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-foreground mb-1.5 block">Type</label>
+                      <select value={notificationForm.type} onChange={e => setNotificationForm(prev => ({ ...prev, type: e.target.value }))}
+                        className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10">
+                        <option value="system">System</option>
+                        <option value="alert">Alert</option>
+                        <option value="reminder">Reminder</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-foreground mb-1.5 block">Title</label>
+                    <Input value={notificationForm.title} onChange={e => setNotificationForm(prev => ({ ...prev, title: e.target.value }))}
+                      placeholder="Notification title" className="h-10 rounded-xl" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-foreground mb-1.5 block">Message</label>
+                    <textarea value={notificationForm.message} onChange={e => setNotificationForm(prev => ({ ...prev, message: e.target.value }))}
+                      className="w-full rounded-2xl border border-input bg-background px-3 py-3 text-sm min-h-[120px]" placeholder="Write a message for the user" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={sendNotification} className="inline-flex items-center justify-center rounded-2xl bg-primary text-white px-4 py-2 text-sm font-semibold">Send Notification</button>
+                    <button onClick={() => setNotificationForm({ userId: "", type: "system", title: "", message: "" })}
+                      className="inline-flex items-center justify-center rounded-2xl border border-border bg-white text-sm font-semibold px-4 py-2 text-muted-foreground">Reset</button>
+                  </div>
+                </div>
+                <div className="bg-slate-50 rounded-3xl border border-border p-4">
+                  <h3 className="font-semibold text-sm mb-3">Recent Notifications</h3>
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto">
+                    {notifications.data?.notifications.length ? notifications.data.notifications.slice(0, 6).map(n => (
+                      <div key={n.id} className="rounded-2xl bg-white border border-border p-3">
+                        <div className="flex items-center justify-between gap-2 mb-2 text-xs text-muted-foreground">
+                          <span>#{n.userId}</span>
+                          <span>{new Date(n.createdAt).toLocaleDateString("en-NP")}</span>
+                        </div>
+                        <p className="font-semibold text-sm">{n.title}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-2">{n.message}</p>
+                      </div>
+                    )) : (
+                      <p className="text-xs text-muted-foreground">No notifications yet.</p>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

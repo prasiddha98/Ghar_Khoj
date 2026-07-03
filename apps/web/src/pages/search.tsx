@@ -3,11 +3,12 @@ import { useLocation } from "wouter";
 import { Search as SearchIcon, SlidersHorizontal, MapPin, X, CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useGetRooms, RoomRoomType, RoomTenantType, useUpsertTenantPreferences } from "@workspace/api-client-react";
+import { useGetRooms, RoomTenantType, useUpsertTenantPreferences } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { RoomCard } from "@/components/room-card";
 import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { cn, formatRoomType } from "@/lib/utils";
+import { useRoomTypes, DEFAULT_ROOM_TYPE_OPTIONS } from "@/hooks/use-room-types";
 import { BackButton } from "@/components/back-button";
 
 const POPULAR_CITIES = ["Kathmandu", "Lalitpur", "Bhaktapur", "Pokhara", "Biratnagar"];
@@ -26,6 +27,7 @@ export default function SearchPage() {
   const [maxPrice, setMaxPrice] = useState("");
   const [roomType, setRoomType] = useState<string>("");
   const [tenantType, setTenantType] = useState<string>("");
+  const { roomTypes } = useRoomTypes();
   const [parking, setParking] = useState(false);
   const [queryParams, setQueryParams] = useState<Record<string, unknown>>(() => {
     const c = getCityFromSearch();
@@ -229,16 +231,16 @@ export default function SearchPage() {
                 <div>
                   <label className="text-xs font-semibold mb-2 block text-muted-foreground uppercase tracking-wide">Room Type</label>
                   <div className="flex flex-wrap gap-2">
-                    {Object.values(RoomRoomType).map(type => (
+                    {(roomTypes.length > 0 ? roomTypes : DEFAULT_ROOM_TYPE_OPTIONS).map(type => (
                       <button
-                        key={type}
-                        onClick={() => setRoomType(roomType === type ? "" : type)}
+                        key={type.slug}
+                        onClick={() => setRoomType(roomType === type.slug ? "" : type.slug)}
                         className={cn(
-                          "px-3 py-1.5 rounded-xl text-xs font-medium transition-all capitalize border",
-                          roomType === type ? "bg-primary/10 border-primary text-primary" : "bg-white border-border text-muted-foreground hover:border-primary/30"
+                          "px-3 py-1.5 rounded-xl text-xs font-medium transition-all border",
+                          roomType === type.slug ? "bg-primary/10 border-primary text-primary" : "bg-white border-border text-muted-foreground hover:border-primary/30"
                         )}
                       >
-                        {type}
+                        {formatRoomType(type.slug)}
                       </button>
                     ))}
                   </div>
