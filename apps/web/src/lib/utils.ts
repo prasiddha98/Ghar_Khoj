@@ -13,6 +13,28 @@ export function formatCurrency(amount: number) {
   }).format(amount)
 }
 
+export function formatRoomType(type?: string | null) {
+  switch (type) {
+    case "single":
+      return "Single"
+    case "1bhk":
+      return "1BHK"
+    case "1bk":
+      return "1BK"
+    case "double":
+      return "2BHK"
+    case "flat":
+      return "3BHK"
+    case "studio":
+      return "Studio"
+    case "shared":
+      return "Shared"
+    default:
+      if (!type) return ""
+      return String(type).replace(/^./, (char) => char.toUpperCase())
+  }
+}
+
 export function getMediaUrl(url?: string | null) {
   if (!url) return undefined;
   const trimmed = url.trim();
