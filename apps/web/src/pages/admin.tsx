@@ -86,14 +86,6 @@ function resolveVerificationImageUrl(rawUrl?: string | null) {
   return getMediaUrl(rawUrl) || undefined;
 }
 
-const ADMIN_CAPABILITIES = [
-  { icon: ShieldCheck, color: "text-amber-500", bg: "bg-amber-50", title: "Verify Identities", desc: "Review citizen ID, NID & selfie documents and approve or reject user verification requests." },
-  { icon: Building, color: "text-blue-500", bg: "bg-blue-50", title: "Verify Room Listings", desc: "Inspect submitted room listings and grant verified status so tenants see them as trusted." },
-  { icon: UserCog, color: "text-purple-500", bg: "bg-purple-50", title: "Change User Roles", desc: "Promote tenants to owners, demote accounts, or grant admin access to trusted members." },
-  { icon: Trash2, color: "text-red-500", bg: "bg-red-50", title: "Remove Content", desc: "Delete abusive, fraudulent, or policy-violating room listings from the platform." },
-  { icon: FileText, color: "text-green-500", bg: "bg-green-50", title: "Verify Contracts", desc: "Review fully-signed rental contracts and issue official Ghar Khoj verification." },
-  { icon: Ban, color: "text-rose-500", bg: "bg-rose-50", title: "Cannot Post Rooms", desc: "Admin accounts cannot post rooms or interact as tenants. Dedicated management role only." },
-];
 
 function StatCard({ icon: Icon, label, value, color, sub }: { icon: any; label: string; value: number | string; color: string; sub?: string }) {
   return (
@@ -419,29 +411,6 @@ export default function AdminDashboard() {
               <StatCard icon={Home} label="Available Rooms" value={stats.data?.availableRooms ?? 0} color="bg-sky-100 text-sky-600" />
               <StatCard icon={AlertTriangle} label="Unverified Rooms" value={stats.data?.unverifiedRooms ?? 0} color="bg-orange-100 text-orange-600" />
               <StatCard icon={FileText} label="Contracts to Review" value={pendingContracts.length} color="bg-teal-100 text-teal-600" />
-            </div>
-
-            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b bg-gradient-to-r from-secondary/5 to-blue-50 flex items-center gap-3">
-                <Key className="text-secondary" size={20} />
-                <div>
-                  <h3 className="font-bold text-foreground">Admin-Only Capabilities</h3>
-                  <p className="text-xs text-muted-foreground">What you can uniquely do as an administrator</p>
-                </div>
-              </div>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-border">
-                {ADMIN_CAPABILITIES.map((cap, i) => (
-                  <div key={i} className={cn("p-5 flex gap-4", i >= 3 && "border-t border-border")}>
-                    <div className={`${cap.bg} p-3 rounded-xl h-fit shrink-0`}>
-                      <cap.icon className={cap.color} size={20} />
-                    </div>
-                    <div>
-                      <p className="font-bold text-sm text-foreground">{cap.title}</p>
-                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{cap.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">

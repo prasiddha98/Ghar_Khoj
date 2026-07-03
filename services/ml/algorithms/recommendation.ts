@@ -15,6 +15,7 @@ export interface Interaction {
   userId: number;
   roomId: number;
   type: string;
+  createdAt?: string | Date;
 }
 
 export interface User {
@@ -49,11 +50,18 @@ export interface RecommendationResult {
   knnScore: number;
   collabScore: number;
   preferenceScore: number;
+  cityMatchScore: number;
   finalScore: number;
   tag: string;
   reason?: string;
 }
 
+// Recommendation algorithm pipeline:
+// 1. Collect recent view interactions for the user.
+// 2. Derive room-type preferences, parking, and availability signals.
+// 3. Score each room on city match, distance, content, amenities, type affinity, and collaborative similarity.
+// 4. Combine weighted scores and apply dominant-type / parking boosts.
+// 5. Sort by city match first, then proximity, price, content, parking, similarity, and final score.
 export function haversineDistance(
   lat1: number,
   lon1: number,
@@ -83,36 +91,15 @@ export function calculateAmenityPreferenceScore(
   viewedRoomIds: number[]
 ): number {
   if (viewedRoomIds.length === 0) {
-    return 0.5; // Neutral if no history
-  }
-  const viewedRooms = getViewedRoomsWithDuplicates(viewedRoomIds, allRooms);
-
-  // Calculate what percentage of viewed rooms had parking
-  const parkingCount = viewedRooms.filter((r) => r.parking).length;
-  const userParkingPreference = parkingCount / viewedRoomIds.length;
-
-  // Calculate what percentage of viewed rooms were available
-  const availableCount = viewedRooms.filter((r) => r.isAvailable).length;
-  const userAvailabilityPreference = availableCount / viewedRoomIds.length;
-
-  // Score based on amenities matching user's viewed preferences
-  let score = 0;
-
-  // Parking score: if user viewed rooms with parking, boost parking rooms
-  if (room.parking && userParkingPreference >= 0.3) {
-    // If user viewed 30%+ rooms with parking, prioritize parking rooms
-    score += userParkingPreference * 0.6; // Up to 0.6 points for parking match
-  } else if (!room.parking && userParkingPreference >= 0.3) {
-    // Penalize rooms without parking if user preferred parking
-    score -= userParkingPreference * 0.2; // Down to -0.2 for no parking when user wants it
+    return room.parking || room.isAvailable ? 0.6 : 0.4;
   }
 
-  // Availability score: rooms that are available score higher
-  if (room.isAvailable && userAvailabilityPreference >= 0.4) {
-    score += userAvailabilityPreference * 0.4; // Up to 0.4 for availability match
-  }
+  const { parkingRatio, availabilityRatio } = computeViewPreferences(viewedRoomIds, allRooms);
+  const parkingSignal = room.parking ? Math.max(0, parkingRatio - 0.3) : Math.min(0, parkingRatio >= 0.3 ? -parkingRatio : 0);
+  const parkingScore = parkingSignal * (room.parking ? 0.6 : 0.2);
+  const availabilityScore = room.isAvailable ? availabilityRatio * 0.4 : 0;
 
-  return Math.max(0, Math.min(1, score + 0.5)); // Normalize to 0-1, default to 0.5
+  return Math.min(1, Math.max(0, 0.4 + parkingScore + availabilityScore));
 }
 
 export function calculateContentScore(
@@ -120,78 +107,44 @@ export function calculateContentScore(
   allRooms: Room[],
   viewedRoomIds: number[]
 ): number {
-  const availabilityScore = room.isAvailable ? 0.5 : 0;
-  const parkingScore = room.parking ? 0.3 : 0;
+  const baseParking = room.parking ? 0.2 : 0;
+  const baseAvailability = room.isAvailable ? 0.3 : 0;
+  const typeSignal = getEffectiveRoomType(room);
+  const { parkingRatio, availabilityRatio } = computeViewPreferences(viewedRoomIds, allRooms);
 
-  if (viewedRoomIds.length === 0) {
-    return Math.min(1, availabilityScore + parkingScore + 0.2);
-  }
+  const viewedTypeCounts = getRoomTypeCountsFromViewed(viewedRoomIds, allRooms);
+  const typeAffinity = typeSignal ? (viewedTypeCounts[typeSignal] || 0) / Math.max(viewedRoomIds.length, 1) : 0;
+  const fallbackScore = baseParking + baseAvailability + 0.15;
 
-  const viewedRooms = getViewedRoomsWithDuplicates(viewedRoomIds, allRooms);
-  const parkingPreferenceCount = viewedRooms.filter((r) => r.parking).length;
-  const availabilityPreferenceCount = viewedRooms.filter((r) => r.isAvailable).length;
-
-  const userLikesParking = parkingPreferenceCount / viewedRoomIds.length;
-  const userLikesAvailable = availabilityPreferenceCount / viewedRoomIds.length;
-
-  const adjustedParkingScore = room.parking ? 0.3 + userLikesParking * 0.2 : 0;
-  const adjustedAvailableScore = room.isAvailable ? 0.5 + userLikesAvailable * 0.2 : 0;
-
-  return Math.min(1, adjustedAvailableScore + adjustedParkingScore);
+  return Math.min(1, viewedRoomIds.length === 0
+    ? fallbackScore
+    : baseParking + baseAvailability + typeAffinity * 0.3 + parkingRatio * 0.05 + availabilityRatio * 0.1);
 }
 
 export function calculatePreferenceMatchScore(
   room: Room,
-  tenantPref?: TenantPreference | null
+  tenantPref?: TenantPreference | null,
+  preferredCity?: string | null
 ): number {
-  if (!tenantPref) {
-    return 0.5; // Neutral score if no preferences
+  if (!tenantPref && !preferredCity) {
+    return 0.5;
   }
 
-  let matchScore = 0;
-  let totalFactors = 0;
+  const cityMatch = preferredCity ? Number(room.city === preferredCity) : 0;
+  const factors = [
+    tenantPref?.city ? Number(room.city === tenantPref.city) : null,
+    tenantPref?.roomType ? Number(room.roomType === tenantPref.roomType) : null,
+    tenantPref?.tenantType ? Number(room.tenantType === tenantPref.tenantType) : null,
+    tenantPref?.minBudget != null ? (room.price >= tenantPref.minBudget ? 0.5 : 0) : null,
+    tenantPref?.maxBudget != null ? (room.price <= tenantPref.maxBudget ? 0.5 : 0) : null,
+    tenantPref?.parking != null ? Number(room.parking === tenantPref.parking) : null,
+  ].filter((value): value is number => value !== null);
 
-  // Room type preference
-  if (tenantPref.roomType) {
-    totalFactors++;
-    if (room.roomType === tenantPref.roomType) {
-      matchScore += 1;
-    }
-  }
+  const matchScore = factors.length > 0
+    ? Math.min(1, factors.reduce((sum, value) => sum + value, 0) / factors.length)
+    : 0.5;
 
-  // Tenant type preference
-  if (tenantPref.tenantType) {
-    totalFactors++;
-    if (room.tenantType === tenantPref.tenantType) {
-      matchScore += 1;
-    }
-  }
-
-  // Price range preference
-  if (tenantPref.minBudget !== null && tenantPref.minBudget !== undefined) {
-    totalFactors++;
-    if (room.price >= tenantPref.minBudget) {
-      matchScore += 0.5;
-    }
-  }
-
-  if (tenantPref.maxBudget !== null && tenantPref.maxBudget !== undefined) {
-    totalFactors++;
-    if (room.price <= tenantPref.maxBudget) {
-      matchScore += 0.5;
-    }
-  }
-
-  // Parking preference
-  if (tenantPref.parking !== null && tenantPref.parking !== undefined) {
-    totalFactors++;
-    if (room.parking === tenantPref.parking) {
-      matchScore += 1;
-    }
-  }
-
-  // Return normalized score (0-1)
-  return totalFactors > 0 ? Math.min(1, matchScore / totalFactors) : 0.5;
+  return preferredCity ? Math.max(matchScore, cityMatch) : matchScore;
 }
 
 export function getDominantRoomType(
@@ -201,21 +154,29 @@ export function getDominantRoomType(
   if (viewedRoomIds.length < 3) {
     return null;
   }
-  // Count room types based on view occurrences (duplicates count)
+
   const roomTypeCount = getRoomTypeCountsFromViewed(viewedRoomIds, allRooms);
+  const effectiveTypes = getViewedRoomsWithDuplicates(viewedRoomIds, allRooms).map(getEffectiveRoomType);
 
-  // Find the most viewed room type (requires at least 3 views)
-  let dominantType: string | null = null;
-  let maxCount = 0;
+  return Object.entries(roomTypeCount)
+    .filter(([, count]) => count >= 3)
+    .reduce<{ type: string | null; count: number; latestIndex: number }>(
+      (winner, [type, count]) => {
+        const lastIndex = effectiveTypes
+          .map((t, index) => (t === type ? index : -1))
+          .filter((index) => index >= 0)
+          .pop() ?? -1;
 
-  Object.entries(roomTypeCount).forEach(([type, count]) => {
-    if (count >= 3 && count > maxCount) {
-      dominantType = type;
-      maxCount = count;
-    }
-  });
+        const shouldReplace =
+          count > winner.count ||
+          (count === winner.count && lastIndex > winner.latestIndex);
 
-  return dominantType;
+        return shouldReplace
+          ? { type, count, latestIndex: lastIndex }
+          : winner;
+      },
+      { type: null, count: 0, latestIndex: -1 }
+    ).type;
 }
 
 export function calculateRoomTypePreferenceScore(
@@ -226,82 +187,54 @@ export function calculateRoomTypePreferenceScore(
   if (viewedRoomIds.length === 0) {
     return 0;
   }
-  // Count room types using view occurrences (duplicates count)
+
   const roomTypeCount = getRoomTypeCountsFromViewed(viewedRoomIds, allRooms);
+  const effectiveType = getEffectiveRoomType(room);
+  const count = effectiveType ? roomTypeCount[effectiveType] || 0 : 0;
 
-  if (roomTypeCount[room.roomType]) {
-    const preference = Math.min(1, roomTypeCount[room.roomType] / viewedRoomIds.length);
-    return preference;
-  }
-
-  return 0;
+  return Math.min(1, count / viewedRoomIds.length);
 }
 
 export function calculateKnnScore(
-  room: Room,
-  allRooms: Room[],
-  viewedRoomIds: number[]
+  _room: Room,
+  _allRooms: Room[],
+  _viewedRoomIds: number[]
 ): number {
-  if (viewedRoomIds.length === 0) {
-    return 0.1;
-  }
-
-  // Count viewed rooms with duplicates (each view counts)
-  const roomMap: Record<number, Room> = {};
-  allRooms.forEach((r) => (roomMap[r.id] = r));
-  const viewedRoomsWithDuplicates = viewedRoomIds.map((id) => roomMap[id]).filter(Boolean as any) as Room[];
-
-  const similarRooms = viewedRoomsWithDuplicates.filter((r) => {
-    const rType = getEffectiveRoomType(r);
-    const thisType = getEffectiveRoomType(room);
-    return rType && thisType && rType === thisType && Math.abs((r.price as number) - room.price) < room.price * 0.3;
-  });
-
-  return Math.min(1, (similarRooms.length / Math.max(viewedRoomIds.length, 1)) * 0.5);
+  return 0;
 }
 
 export function calculateCollaborativeScore(
   room: Room,
+  rooms: Room[],
   users: User[],
   interactions: Interaction[],
   currentUserId: number
 ): number {
-  if (users.length <= 1) {
-    return 0.05;
-  }
-
-  const userRoomSet = new Set(
+  const roomMap = new Map(rooms.map((entry) => [entry.id, entry]));
+  const currentRoomIds = new Set(
     interactions.filter((i) => i.userId === currentUserId).map((i) => i.roomId)
   );
 
-  let similaritySum = 0;
-  let similarUsersCount = 0;
+  const similarities = users
+    .filter((otherUser) => otherUser.id !== currentUserId)
+    .map((otherUser) => {
+      const otherRoomIds = interactions
+        .filter((i) => i.userId === otherUser.id)
+        .map((i) => i.roomId);
+      if (otherRoomIds.length === 0) return 0;
 
-  for (const otherUser of users) {
-    if (otherUser.id === currentUserId) {
-      continue;
-    }
+      const otherRooms = otherRoomIds.map((id) => roomMap.get(id)).filter(Boolean) as Room[];
+      const otherRoomSet = new Set(otherRoomIds);
+      const sameRoom = otherRoomSet.has(room.id) ? 0.6 : 0;
+      const sameType = otherRooms.some((item) => getEffectiveRoomType(item) === getEffectiveRoomType(room)) ? 0.25 : 0;
+      const similarPrice = otherRooms.some((item) => Math.abs(item.price - room.price) <= Math.max(room.price * 0.3, 1000)) ? 0.15 : 0;
+      const overlap = currentRoomIds.size > 0 ? otherRoomIds.filter((id) => currentRoomIds.has(id)).length / Math.max(currentRoomIds.size, 1) : 0;
+      return Math.min(1, sameRoom + sameType + similarPrice + overlap * 0.2);
+    })
+    .filter((similarity) => similarity > 0);
 
-    const otherRoomSet = new Set(
-      interactions.filter((i) => i.userId === otherUser.id).map((i) => i.roomId)
-    );
-
-    if (otherRoomSet.size === 0) {
-      continue;
-    }
-
-    const intersection = new Set([...userRoomSet].filter((roomId) => otherRoomSet.has(roomId)));
-    const union = new Set([...userRoomSet, ...otherRoomSet]);
-
-    if (union.size > 0 && otherRoomSet.has(room.id)) {
-      const jaccardSimilarity = intersection.size / union.size;
-      similaritySum += jaccardSimilarity;
-      similarUsersCount++;
-    }
-  }
-
-  return similarUsersCount > 0
-    ? Math.min(1, similaritySum / Math.max(similarUsersCount, 1))
+  return similarities.length > 0
+    ? Math.min(1, similarities.reduce((sum, value) => sum + value, 0) / similarities.length)
     : 0.05;
 }
 
@@ -314,44 +247,163 @@ function getViewedRoomsWithDuplicates(viewedRoomIds: number[], allRooms: Room[])
 
 // Helper: get counts of room types from viewed room ids (counts duplicates)
 function getRoomTypeCountsFromViewed(viewedRoomIds: number[], allRooms: Room[]): Record<string, number> {
-  const viewed = getViewedRoomsWithDuplicates(viewedRoomIds, allRooms);
-  const roomTypeCount: Record<string, number> = {};
-  viewed.forEach((r) => {
-    if (!r) return;
-    const t = getEffectiveRoomType(r);
-    if (!t) return;
-    roomTypeCount[t] = (roomTypeCount[t] || 0) + 1;
-  });
-  return roomTypeCount;
+  return getViewedRoomsWithDuplicates(viewedRoomIds, allRooms).reduce<Record<string, number>>((counts, room) => {
+    const type = getEffectiveRoomType(room);
+    if (!type) return counts;
+    counts[type] = (counts[type] || 0) + 1;
+    return counts;
+  }, {});
 }
 
 // Infer room type from textual fields when `roomType` is missing or unreliable
 export function inferRoomTypeFromText(room: Room): string | null {
   const textFields: string[] = [];
-  const t = (room as any).title;
-  const d = (room as any).description || (room as any).details || (room as any).summary;
-  if (typeof t === "string") textFields.push(t.toLowerCase());
-  if (typeof d === "string") textFields.push(d.toLowerCase());
+  const title = (room as any).title;
+  const description = (room as any).description || (room as any).details || (room as any).summary;
+  if (typeof title === "string") textFields.push(title.toLowerCase());
+  if (typeof description === "string") textFields.push(description.toLowerCase());
 
   const combined = textFields.join(" ");
   if (!combined) return null;
 
-  if (/\b(single|1bhk|one bhk|one-room|one room|single room|studio)\b/.test(combined)) return "single";
-  if (/\b(double|2bhk|two bhk|two-room|two room|double room)\b/.test(combined)) return "double";
-  if (/\b(flat|apartment|apartment for rent|residential)\b/.test(combined)) return "flat";
-  if (/\b(shared|sharing|roommate)\b/.test(combined)) return "shared";
-  if (/\b(hostel)\b/.test(combined)) return "hostel";
-  if (/\b(studio)\b/.test(combined)) return "studio";
+  const patterns: Array<{ type: string; regex: RegExp }> = [
+    { type: "single", regex: /\b(single|1bhk|one bhk|one-room|one room|single room|studio)\b/ },
+    { type: "double", regex: /\b(double|2bhk|two bhk|two-room|two room|double room)\b/ },
+    { type: "flat", regex: /\b(flat|apartment|apartment for rent|residential)\b/ },
+    { type: "shared", regex: /\b(shared|sharing|roommate)\b/ },
+    { type: "hostel", regex: /\b(hostel)\b/ },
+    { type: "studio", regex: /\b(studio)\b/ },
+  ];
 
-  return null;
+  return patterns.find((pattern) => pattern.regex.test(combined))?.type ?? null;
 }
 
 export function getEffectiveRoomType(room: Room): string | null {
-  if (room.roomType && typeof room.roomType === "string" && room.roomType.trim() !== "") {
-    return room.roomType;
-  }
-  const inferred = inferRoomTypeFromText(room);
-  return inferred;
+  const normalizedRoomType =
+    typeof room.roomType === "string" && room.roomType.trim() ? room.roomType : null;
+  return normalizedRoomType ?? inferRoomTypeFromText(room);
+}
+
+const SCORE_WEIGHTS = {
+  city: 0.3,
+  distance: 0.25,
+  content: 0.2,
+  amenity: 0.1,
+  collab: 0.15,
+  typePriority: 0.1,
+  preference: 0.1,
+};
+
+function toTimestamp(value?: string | Date): number {
+  if (!value) return 0;
+  const date = value instanceof Date ? value : new Date(value);
+  const time = date.getTime();
+  return !isNaN(time) ? time : 0;
+}
+
+function getRecentViewInteractions(interactions: Interaction[], userId: number, limit = 10): Interaction[] {
+  return interactions
+    .filter((interaction) => interaction.userId === userId && interaction.type === "view")
+    .slice()
+    .sort((a, b) => toTimestamp(a.createdAt) - toTimestamp(b.createdAt))
+    .slice(-limit);
+}
+
+function computeViewPreferences(viewedRoomIds: number[], allRooms: Room[]) {
+  const viewedRooms = getViewedRoomsWithDuplicates(viewedRoomIds, allRooms);
+  const typeCount = getRoomTypeCountsFromViewed(viewedRoomIds, allRooms);
+  const parkingCount = viewedRooms.filter((room) => room.parking).length;
+  const availabilityCount = viewedRooms.filter((room) => room.isAvailable).length;
+
+  return {
+    viewedRooms,
+    typeCount,
+    parkingRatio: parkingCount / Math.max(viewedRoomIds.length, 1),
+    availabilityRatio: availabilityCount / Math.max(viewedRoomIds.length, 1),
+  };
+}
+
+function buildRoomScore(
+  room: Room,
+  rooms: Room[],
+  viewedRoomIds: number[],
+  tenantPref: TenantPreference | null | undefined,
+  userPreferredCity: string | null | undefined,
+  users: User[],
+  interactions: Interaction[],
+  userId: number,
+  dominantRoomType: string | null,
+  viewPreferences: ReturnType<typeof computeViewPreferences>,
+  latitude: number,
+  longitude: number
+): RecommendationResult {
+  const effectiveRoomType = getEffectiveRoomType(room);
+  const distanceKm = room.latitude && room.longitude
+    ? haversineDistance(latitude, longitude, room.latitude, room.longitude)
+    : 0;
+
+  const distanceScore = calculateDistanceScore(distanceKm);
+  const contentScore = calculateContentScore(room, rooms, viewedRoomIds);
+  const amenityScore = calculateAmenityPreferenceScore(room, rooms, viewedRoomIds);
+  const typeScore = calculateRoomTypePreferenceScore(room, rooms, viewedRoomIds);
+  const preferenceScore = calculatePreferenceMatchScore(room, tenantPref, tenantPref?.city || userPreferredCity || null);
+  const knnScore = calculateKnnScore(room, rooms, viewedRoomIds);
+  const collabScore = calculateCollaborativeScore(room, rooms, users, interactions, userId);
+  const cityMatchScore = tenantPref?.city || userPreferredCity
+    ? Number(room.city === (tenantPref?.city || userPreferredCity))
+    : 0.5;
+
+  const typePriority = dominantRoomType && effectiveRoomType === dominantRoomType ? 1 : 0;
+  const parkingBonus = room.parking && viewPreferences.parkingRatio >= 0.3 ? 0.08 : 0;
+  const cityBoost = room.city && (tenantPref?.city || userPreferredCity) && room.city === (tenantPref?.city || userPreferredCity) ? 0.1 : 0;
+
+  const combined =
+    cityMatchScore * SCORE_WEIGHTS.city +
+    distanceScore * SCORE_WEIGHTS.distance +
+    contentScore * SCORE_WEIGHTS.content +
+    amenityScore * SCORE_WEIGHTS.amenity +
+    collabScore * SCORE_WEIGHTS.collab +
+    parkingBonus +
+    cityBoost;
+
+  const finalScore = Math.min(
+    1,
+    Math.max(
+      0,
+      combined + typeScore * SCORE_WEIGHTS.typePriority + preferenceScore * SCORE_WEIGHTS.preference
+    )
+  );
+
+  return {
+    roomId: room.id,
+    room,
+    distanceKm,
+    contentScore,
+    amenityScore,
+    typeScore,
+    knnScore,
+    collabScore,
+    preferenceScore,
+    cityMatchScore,
+    finalScore,
+    tag: "Recommended",
+    reason: room.isAvailable ? "Available now" : "Good match",
+  };
+}
+
+function compareRecommendationResults(left: RecommendationResult, right: RecommendationResult, dominantRoomType: string | null) {
+  const compareKeys = [
+    () => Number(getEffectiveRoomType(right.room) === dominantRoomType) - Number(getEffectiveRoomType(left.room) === dominantRoomType),
+    () => right.cityMatchScore - left.cityMatchScore,
+    () => calculateDistanceScore(right.distanceKm) - calculateDistanceScore(left.distanceKm),
+    () => left.room.price - right.room.price,
+    () => right.contentScore - left.contentScore,
+    () => Number(right.room.parking) - Number(left.room.parking),
+    () => right.collabScore - left.collabScore,
+    () => right.finalScore - left.finalScore,
+  ];
+
+  return compareKeys.reduce((result, compare) => result !== 0 ? result : compare(), 0);
 }
 
 export function matchesTenantPreferences(
@@ -360,55 +412,29 @@ export function matchesTenantPreferences(
   preferredCity?: string | null
 ): boolean {
   const effectiveCity = tenantPref?.city || preferredCity;
+  const checks = [
+    !effectiveCity || room.city === effectiveCity,
+    !tenantPref?.roomType || room.roomType === tenantPref.roomType,
+    !tenantPref?.tenantType || room.tenantType === tenantPref.tenantType,
+    tenantPref?.minBudget == null || room.price >= tenantPref.minBudget,
+    tenantPref?.maxBudget == null || room.price <= tenantPref.maxBudget,
+    tenantPref?.parking == null || room.parking === tenantPref.parking,
+  ];
 
-  if (!tenantPref && !effectiveCity) {
-    return true;
-  }
-
-  if (effectiveCity && room.city !== effectiveCity) {
-    return false;
-  }
-  if (tenantPref?.roomType && room.roomType !== tenantPref.roomType) {
-    return false;
-  }
-  if (tenantPref?.tenantType && room.tenantType !== tenantPref.tenantType) {
-    return false;
-  }
-  if (tenantPref?.minBudget !== null && tenantPref?.minBudget !== undefined && room.price < tenantPref.minBudget) {
-    return false;
-  }
-  if (tenantPref?.maxBudget !== null && tenantPref?.maxBudget !== undefined && room.price > tenantPref.maxBudget) {
-    return false;
-  }
-
-  return true;
+  return checks.every(Boolean);
 }
 
 export function matchesRoomFilters(room: Room, filters?: RoomFilters | null): boolean {
-  if (!filters) {
-    return true;
-  }
+  const checks = [
+    !filters || !filters.city || room.city === filters.city,
+    !filters || !filters.roomType || room.roomType === filters.roomType,
+    !filters || !filters.tenantType || room.tenantType === filters.tenantType,
+    !filters || filters.parking === undefined || room.parking === filters.parking,
+    !filters || filters.minPrice === undefined || room.price >= filters.minPrice,
+    !filters || filters.maxPrice === undefined || room.price <= filters.maxPrice,
+  ];
 
-  if (filters.city && room.city !== filters.city) {
-    return false;
-  }
-  if (filters.roomType && room.roomType !== filters.roomType) {
-    return false;
-  }
-  if (filters.tenantType && room.tenantType !== filters.tenantType) {
-    return false;
-  }
-  if (filters.parking !== undefined && room.parking !== filters.parking) {
-    return false;
-  }
-  if (filters.minPrice !== undefined && room.price < filters.minPrice) {
-    return false;
-  }
-  if (filters.maxPrice !== undefined && room.price > filters.maxPrice) {
-    return false;
-  }
-
-  return true;
+  return checks.every(Boolean);
 }
 
 export function buildRecommendationResults(options: {
@@ -436,109 +462,14 @@ export function buildRecommendationResults(options: {
     limit = 10,
   } = options;
 
-  const viewedRoomIds = interactions
-    .filter((i) => i.userId === userId && i.type === "view")
-    .map((i) => i.roomId);
-
-  const viewedRoomsWithDuplicates = getViewedRoomsWithDuplicates(viewedRoomIds, rooms);
-
-  // Detect if user has a strong preference for a specific room type
+  const recentUserViews = getRecentViewInteractions(interactions, userId, 10);
+  const viewedRoomIds = recentUserViews.map((interaction) => interaction.roomId);
+  const viewPreferences = computeViewPreferences(viewedRoomIds, rooms);
   const dominantRoomType = getDominantRoomType(rooms, viewedRoomIds);
 
-  const scored = rooms.map((room) => {
-    if (!matchesTenantPreferences(room, tenantPref, userPreferredCity) || !matchesRoomFilters(room, filters)) {
-      return {
-        roomId: room.id,
-        room,
-        distanceKm: 0,
-        contentScore: 0,
-        amenityScore: 0,
-        typeScore: 0,
-        knnScore: 0,
-        collabScore: 0,
-        preferenceScore: 0,
-        finalScore: Number.NEGATIVE_INFINITY,
-        tag: "Filtered",
-        reason: "Does not match tenant preferences or filters",
-      };
-    }
-
-    const distanceKm = room.latitude && room.longitude
-      ? haversineDistance(latitude, longitude, room.latitude, room.longitude)
-      : 0;
-    const distanceScore = calculateDistanceScore(distanceKm);
-    const contentScore = calculateContentScore(room, rooms, viewedRoomIds);
-    const amenityScore = calculateAmenityPreferenceScore(room, rooms, viewedRoomIds);
-    const typeScore = calculateRoomTypePreferenceScore(room, rooms, viewedRoomIds);
-    const preferenceScore = calculatePreferenceMatchScore(room, tenantPref);
-    const knnScore = calculateKnnScore(room, rooms, viewedRoomIds);
-    const collabScore = calculateCollaborativeScore(room, users, interactions, userId);
-
-    const effectiveRoomType = getEffectiveRoomType(room);
-    const matchingDominantType = dominantRoomType && effectiveRoomType === dominantRoomType;
-
-    const typePriority = matchingDominantType ? 1 : 0;
-    const preferredParking = viewedRoomsWithDuplicates.filter((r) => r.parking).length / Math.max(viewedRoomIds.length, 1);
-    const parkingBonus = room.parking && preferredParking >= 0.3 ? 0.1 : 0;
-
-    const prioritizedScore =
-      distanceScore * 0.45 +
-      contentScore * 0.35 +
-      amenityScore * 0.1 +
-      knnScore * 0.1 +
-      collabScore * 0.05 +
-      parkingBonus;
-
-    const finalScore = Math.min(1, Math.max(0, prioritizedScore + typeScore * 0.05 + preferenceScore * 0.05 + typePriority * 0.15));
-
-    return {
-      roomId: room.id,
-      room,
-      distanceKm,
-      contentScore,
-      amenityScore,
-      typeScore,
-      knnScore,
-      collabScore,
-      preferenceScore,
-      finalScore,
-      tag: "Recommended",
-      reason: room.isAvailable ? "Available now" : "Good match",
-    };
-  });
-
-  return scored
-    .filter((result) => result.finalScore > Number.NEGATIVE_INFINITY)
-    .sort((left, right) => {
-      const leftDominant = dominantRoomType && getEffectiveRoomType(left.room) === dominantRoomType ? 1 : 0;
-      const rightDominant = dominantRoomType && getEffectiveRoomType(right.room) === dominantRoomType ? 1 : 0;
-      if (leftDominant !== rightDominant) {
-        return rightDominant - leftDominant;
-      }
-
-      const leftDistanceScore = calculateDistanceScore(left.distanceKm);
-      const rightDistanceScore = calculateDistanceScore(right.distanceKm);
-      if (leftDistanceScore !== rightDistanceScore) {
-        return rightDistanceScore - leftDistanceScore;
-      }
-
-      if (left.contentScore !== right.contentScore) {
-        return right.contentScore - left.contentScore;
-      }
-
-      if (left.room.parking !== right.room.parking) {
-        return right.room.parking ? 1 : -1;
-      }
-
-      if (left.knnScore !== right.knnScore) {
-        return right.knnScore - left.knnScore;
-      }
-
-      if (left.collabScore !== right.collabScore) {
-        return right.collabScore - left.collabScore;
-      }
-
-      return right.finalScore - left.finalScore;
-    })
+  return rooms
+    .filter((room) => matchesTenantPreferences(room, tenantPref, userPreferredCity) && matchesRoomFilters(room, filters))
+    .map((room) => buildRoomScore(room, rooms, viewedRoomIds, tenantPref, userPreferredCity, users, interactions, userId, dominantRoomType, viewPreferences, latitude, longitude))
+    .sort((left, right) => compareRecommendationResults(left, right, dominantRoomType))
     .slice(0, limit);
 }

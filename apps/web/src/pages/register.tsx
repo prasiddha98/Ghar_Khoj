@@ -22,6 +22,11 @@ export default function Register() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [preferredCity, setPreferredCity] = useState("");
+  const [roomType, setRoomType] = useState("");
+  const [tenantType, setTenantType] = useState("");
+  const [minBudget, setMinBudget] = useState("");
+  const [maxBudget, setMaxBudget] = useState("");
+  const [parking, setParking] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -139,6 +144,50 @@ export default function Register() {
               {NEPAL_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+
+          {role === "tenant" && (
+            <div className="rounded-2xl border border-border bg-muted/20 p-4 space-y-3">
+              <p className="text-sm font-semibold text-foreground">Your ideal stay</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold text-foreground mb-1.5 block">Room Type</label>
+                  <select value={roomType} onChange={e => setRoomType(e.target.value)} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10 focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="">Any type</option>
+                    <option value="single">Single</option>
+                    <option value="double">Double</option>
+                    <option value="flat">Flat</option>
+                    <option value="studio">Studio</option>
+                    <option value="shared">Shared</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-foreground mb-1.5 block">Preferred For</label>
+                  <select value={tenantType} onChange={e => setTenantType(e.target.value)} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10 focus:outline-none focus:ring-2 focus:ring-primary">
+                    <option value="">Anyone</option>
+                    <option value="student">Student</option>
+                    <option value="family">Family</option>
+                    <option value="professional">Professional</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-semibold text-foreground mb-1.5 block">Min Budget (NPR)</label>
+                  <Input type="number" value={minBudget} onChange={e => setMinBudget(e.target.value)} placeholder="5000" className="rounded-xl" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-foreground mb-1.5 block">Max Budget (NPR)</label>
+                  <Input type="number" value={maxBudget} onChange={e => setMaxBudget(e.target.value)} placeholder="20000" className="rounded-xl" />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                <input type="checkbox" checked={parking} onChange={e => setParking(e.target.checked)} />
+                <span>Parking is important</span>
+              </label>
+            </div>
+          )}
 
           <div>
             <label className="text-xs font-semibold text-foreground mb-1.5 block">Password *</label>

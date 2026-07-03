@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db";
+import { usersTable, tenantPreferencesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { signAccessToken } from "../middlewares/auth";
@@ -9,7 +9,7 @@ const router: IRouter = Router();
 
 router.post("/auth/register", async (req, res) => {
   try {
-    const { firstName, lastName, email, phone, password, role, preferredCity } = req.body;
+    const { firstName, lastName, email, phone, password, role, preferredCity, tenantPreferences } = req.body;
 
     if (!firstName || !email || !password) {
       return res.status(400).json({ error: "validation_error", message: "First name, email, and password are required" });
@@ -38,6 +38,23 @@ router.post("/auth/register", async (req, res) => {
       preferredCity: preferredCity || null,
       passwordHash: hash,
     }).returning();
+
+    if (safeRole === "tenant") {
+      const effectivePrefs = tenantPreferences || {};
+      const hasPreferenceData = preferredCity || effectivePrefs.city || effectivePrefs.roomType || effectivePrefs.tenantType || effectivePrefs.minBudget != null || effectivePrefs.maxBudget != null || effectivePrefs.parking != null;
+
+      if (hasPreferenceData) {
+        await db.insert(tenantPreferencesTable).values({
+          userId: user.id,
+          city: preferredCity || effectivePrefs.city || null,
+          roomType: effectivePrefs.roomType || null,
+          tenantType: effectivePrefs.tenantType || null,
+          minBudget: effectivePrefs.minBudget != null ? Number(effectivePrefs.minBudget) : null,
+          maxBudget: effectivePrefs.maxBudget != null ? Number(effectivePrefs.maxBudget) : null,
+          parking: effectivePrefs.parking ?? null,
+        });
+      }
+    }
 
     const { passwordHash: _pw, ...safe } = user as any;
     return res.status(201).json(safe);

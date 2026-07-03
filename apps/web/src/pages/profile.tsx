@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import {
@@ -9,9 +10,58 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
 import { BackButton } from "@/components/back-button";
+import { useToast } from "@/hooks/use-toast";
+import { getGetTenantPreferencesQueryKey, useGetTenantPreferences, useUpsertTenantPreferences } from "@workspace/api-client-react";
 
 export default function Profile() {
-  const { user, isLoading, isAdmin, isOwner, isTenant } = useAuth();
+  const { user, userId, isLoading, isAdmin, isOwner, isTenant } = useAuth();
+  const { toast } = useToast();
+  const [preferences, setPreferences] = useState({ city: "", roomType: "", tenantType: "", minBudget: "", maxBudget: "", parking: false });
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const upsertTenantPreferences = useUpsertTenantPreferences();
+  const { data: tenantPreferences, isLoading: isPreferencesLoading } = useGetTenantPreferences(userId ?? 0, {
+    query: {
+      queryKey: getGetTenantPreferencesQueryKey(userId ?? 0),
+      enabled: isTenant && !!userId,
+      refetchOnWindowFocus: false,
+    },
+  });
+
+  useEffect(() => {
+    if (tenantPreferences) {
+      setPreferences({
+        city: tenantPreferences.city || "",
+        roomType: tenantPreferences.roomType || "",
+        tenantType: tenantPreferences.tenantType || "",
+        minBudget: tenantPreferences.minBudget != null ? String(tenantPreferences.minBudget) : "",
+        maxBudget: tenantPreferences.maxBudget != null ? String(tenantPreferences.maxBudget) : "",
+        parking: Boolean(tenantPreferences.parking),
+      });
+    }
+  }, [tenantPreferences]);
+
+  const savePreferences = async () => {
+    if (!userId) return;
+    setIsSavingPreferences(true);
+    try {
+      await upsertTenantPreferences.mutateAsync({
+        userId,
+        data: {
+          city: preferences.city || null,
+          roomType: preferences.roomType || null,
+          tenantType: preferences.tenantType || null,
+          minBudget: preferences.minBudget ? Number(preferences.minBudget) : null,
+          maxBudget: preferences.maxBudget ? Number(preferences.maxBudget) : null,
+          parking: preferences.parking || null,
+        },
+      });
+      toast({ title: "Preferences updated", description: "Your room match preferences are saved." });
+    } catch (error) {
+      toast({ title: "Unable to save preferences", description: "Please try again shortly.", variant: "destructive" });
+    } finally {
+      setIsSavingPreferences(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -105,6 +155,68 @@ export default function Profile() {
         </motion.div>
       )}
 
+      {isTenant && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15 }}
+          className="bg-white rounded-3xl border shadow-sm overflow-hidden"
+        >
+          <div className="p-4 border-b bg-muted/20">
+            <h3 className="font-bold text-sm text-muted-foreground px-2 uppercase tracking-wide">Tenant Preferences</h3>
+          </div>
+          <div className="p-5 space-y-4">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="text-xs font-semibold text-foreground mb-1.5 block">Preferred City</label>
+                <select value={preferences.city} onChange={(e) => setPreferences((prev) => ({ ...prev, city: e.target.value }))} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10 focus:outline-none focus:ring-2 focus:ring-primary">
+                  <option value="">Any city</option>
+                  {['Kathmandu', 'Lalitpur', 'Bhaktapur', 'Pokhara', 'Biratnagar', 'Birgunj', 'Dharan', 'Butwal', 'Hetauda', 'Nepalgunj'].map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-foreground mb-1.5 block">Room Type</label>
+                <select value={preferences.roomType} onChange={(e) => setPreferences((prev) => ({ ...prev, roomType: e.target.value }))} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10 focus:outline-none focus:ring-2 focus:ring-primary">
+                  <option value="">Any type</option>
+                  <option value="single">Single</option>
+                  <option value="double">Double</option>
+                  <option value="flat">Flat</option>
+                  <option value="studio">Studio</option>
+                  <option value="shared">Shared</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-foreground mb-1.5 block">Preferred For</label>
+                <select value={preferences.tenantType} onChange={(e) => setPreferences((prev) => ({ ...prev, tenantType: e.target.value }))} className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10 focus:outline-none focus:ring-2 focus:ring-primary">
+                  <option value="">Anyone</option>
+                  <option value="student">Student</option>
+                  <option value="family">Family</option>
+                  <option value="professional">Professional</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-foreground mb-1.5 block">Budget Range (NPR/month)</label>
+                <div className="flex gap-2">
+                  <input type="number" value={preferences.minBudget} onChange={(e) => setPreferences((prev) => ({ ...prev, minBudget: e.target.value }))} placeholder="Min" className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10 focus:outline-none focus:ring-2 focus:ring-primary" />
+                  <input type="number" value={preferences.maxBudget} onChange={(e) => setPreferences((prev) => ({ ...prev, maxBudget: e.target.value }))} placeholder="Max" className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm h-10 focus:outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+              <input type="checkbox" checked={preferences.parking} onChange={(e) => setPreferences((prev) => ({ ...prev, parking: e.target.checked }))} />
+              <span>Parking is important</span>
+            </label>
+            <Button onClick={savePreferences} disabled={isSavingPreferences || isPreferencesLoading} className="rounded-xl">
+              {isSavingPreferences ? "Saving..." : "Save Preferences"}
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Role-specific Quick Actions */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -122,9 +234,6 @@ export default function Profile() {
           {isAdmin && (
             <>
               <ProfileMenuItem href="/admin" icon={LayoutDashboard} iconBg="bg-secondary/10 text-secondary" title="Admin Dashboard" subtitle="Manage users, rooms & verifications" />
-              <ProfileMenuItem href="/admin" icon={UserCheck} iconBg="bg-amber-100 text-amber-600" title="Pending Verifications" subtitle="Review identity documents" />
-              <ProfileMenuItem href="/admin" icon={Building} iconBg="bg-primary/10 text-primary" title="All Listings" subtitle="Manage room listings" />
-              <ProfileMenuItem href="/admin" icon={Users} iconBg="bg-blue-100 text-blue-600" title="All Users" subtitle="View and manage user accounts" />
             </>
           )}
 
